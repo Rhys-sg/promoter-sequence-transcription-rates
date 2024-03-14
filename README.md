@@ -4,7 +4,7 @@ Using the data from ["Automated model-predictive design of synthetic promoters t
 
 
 
-Decreased MSE from 0.250 to 0.177 (29.2%) using a convolutional neural network based on the:
+Decreased MSE from 0.250 to 0.174 (29.4%) using a convolutional neural network based on the:
 * upstream 6-nucleotide site called the −35 motif
 * downstream 6-nucleotide site called the −10 motif
   

@@ -63,7 +63,7 @@ def pred_prom(model_path, target, tolerance=float('inf'), max_results=5, max_ite
         - the promoter sequences for UP, h35, spacs, h10, disc, ITR (str[])
 
     """
-    params = {'UP': [16, 20, 22],
+    lengths = {'UP': [16, 20, 22],
             'h35': [6],
             'spacs': [16, 17, 18],
             'h10': [6],
@@ -73,7 +73,7 @@ def pred_prom(model_path, target, tolerance=float('inf'), max_results=5, max_ite
 
     # Update "None" values in parameters with all possible combinations
     updated_params = {}
-    for param_name, param_lengths in params.items():
+    for param_name, param_lengths in lengths.items():
         if locals()[param_name] is None:
             for l in param_lengths:
                 updated_params[param_name] = [list(s) for s in list(combinations_with_replacement('ACTG', l))]
@@ -124,7 +124,7 @@ def run_models(model, target, tolerance, all_sequences):
     for i, seq in enumerate(all_sequences):
 
         # print progress, suppress model output
-        print(f"Simulating sequence {i+1}/{length}", end='')
+        print(f"Simulating sequence {i+1}/{length}", end='\r')
         with SuppressOutput():
             rate = model.predict(one_hot(seq))[0][0]
 

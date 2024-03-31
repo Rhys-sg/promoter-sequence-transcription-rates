@@ -32,12 +32,13 @@ The model takes in the required parameters:
 
 It also takes the following optional parameters:
 * The maximum difference between the predicted value and the target (float)
-* Number of results to return (int), maximum number of iterations to run (int)
+* Number of results to return (int)
+* Maximum number of iterations (int)
 * The UP, h35, spacs, h10, disc, and ITR (str) promoter sequences required in the output
 
 It returns a list of dictionaries with the results of each prediction. Each dictionary contains:
 * The predicted value (float)
-* The difference with the target (float)
+* The difference between the predicted and the target (float)
 * The promoter sequences for UP, h35, spacs, h10, disc, ITR (str[])
 
 All internals are delegated to "pred_tool_calc.py".

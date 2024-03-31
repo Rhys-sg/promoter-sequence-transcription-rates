@@ -4,6 +4,7 @@ from itertools import combinations_with_replacement
 from sortedcontainers import SortedDict
 import sys
 import os
+from functools import reduce
 
 class SuppressOutput:
     def __enter__(self):
@@ -29,12 +30,13 @@ def pred_trans(seq, model_path):
     if len(seq) != 6:
         return "The input sequence must have 6 elements."
     try:
-        seq = one_hot(seq)
+        enc_seq = one_hot(seq)
         model = load_model(model_path)
-        rate = model.predict(seq)
+        with SuppressOutput():
+            rate = model.predict(enc_seq)
     except Exception as e:
         return f"An exception occurred: {e}"
-    return rate
+    return rate[0][0]
 
 
 def pred_prom(model_path, target, tolerance=float('inf'), max_results=None, max_iter=None,
@@ -63,40 +65,59 @@ def pred_prom(model_path, target, tolerance=float('inf'), max_results=None, max_
         - the promoter sequences for UP, h35, spacs, h10, disc, ITR (str[])
 
     """
+    
+    try:
+        
+        # Update "None" values in parameters with all valid lengths
+        updated_params = remove_none_params(locals())
+
+        # Load model
+        model = load_model(model_path)
+
+        # Create all permutations of the sequences
+        all_sequences = get_sequences(max_iter, updated_params)
+
+        # Run the model on all sequences
+        difference = run_models(model, target, tolerance, all_sequences)
+
+    except Exception as e:
+        return f"An exception occurred: {e}"
+    
+    # return the top "results" results
+    return list(difference.values())[:max_results]
+
+
+# Update None-value parameters, replace with all possible combinations
+def remove_none_params(params):
+    # Define all valid lengths of each sequence
     lengths = {'UP': [16, 20, 22],
-            'h35': [6],
-            'spacs': [16, 17, 18],
-            'h10': [6],
-            'disc': [8, 6, 7],
-            'ITR': [20, 21]
+                'h35': [6],
+                'spacs': [16, 17, 18],
+                'h10': [6],
+                'disc': [8, 6, 7],
+                'ITR': [20, 21]
     }
 
-    # Update "None" values in parameters with all possible combinations
+    # Update parameters
     updated_params = {}
     for param_name, param_lengths in lengths.items():
-        if locals()[param_name] is None:
+        if params[param_name] is None:
             for l in param_lengths:
                 updated_params[param_name] = [list(s) for s in list(combinations_with_replacement('ACTG', l))]
                 break
         else:
-            updated_params[param_name] = [locals()[param_name]]
-
-    # Load model
-    model = load_model(model_path)
-
-    # Create all permutations of the sequences
-    all_sequences = get_sequences(max_iter, updated_params)
-
-    # Run the model on all sequences
-    difference = run_models(model, target, tolerance, all_sequences)
-
-    # return the top "results" results
-    return list(difference.values())[:max_results]
+            updated_params[param_name] = [params[param_name]]
+    
+    return updated_params
 
     
 # Generate all possible combinations of sequences
 def get_sequences(max_iter, updated_params):
-    all_sequences = []
+
+    all_sequences = []    
+    num_all_permutations = calc_num_permutations(updated_params)
+    num_calc_permutations = 0
+
     for UP_seq in updated_params['UP']:
         for h35_seq in updated_params['h35']:
             for spacs_seq in updated_params['spacs']:
@@ -105,9 +126,9 @@ def get_sequences(max_iter, updated_params):
                         for ITR_seq in updated_params['ITR']:
                             
                             # Add max_iter to avoid long runtimes
-                            max_iter -= 1
-                            if max_iter <= 0: 
-                                print("Max iterations reached. Truncating results.")
+                            num_calc_permutations += 1
+                            if num_calc_permutations > max_iter:
+                                print(f"The maximum number of iterations has been reached. Simulating {max_iter}/{num_all_permutations} permutations.")
                                 return all_sequences
 
                             # Concatenate sequences, append to list
@@ -115,6 +136,11 @@ def get_sequences(max_iter, updated_params):
                             all_sequences += [seq]
     
     return all_sequences
+
+
+# Calculate the total number of permutations
+def calc_num_permutations(updated_params):
+    return reduce(lambda x, y: x * y, [len(updated_params[key]) for key in ['UP', 'h35', 'spacs', 'h10', 'disc', 'ITR']])
 
 
 # Run the model on all sequences
@@ -139,6 +165,8 @@ def run_models(model, target, tolerance, all_sequences):
                                             'disc' : seq[4],
                                             'ITR' : seq[5]
                                             }
+    # print progress, suppress model output
+    print(f"Simulation complete: {i+1}/{length}", end='\r')
     return difference
 
 # encode one row, concatenating each sequence

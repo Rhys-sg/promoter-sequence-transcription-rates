@@ -43,7 +43,7 @@ def pred_prom(model_path, target, tolerance=float('inf'), results=5, max_iter=10
     - tolerance (float): maximum difference between the predicted value and the target
     - results (int): number of results to return
     - max_iter (int): maximum number of iterations to run
-    - UP, h35, spacs, h10, disc, ITR (str): promoter sequences to predict
+    - UP, h35, spacs, h10, disc, ITR (str): promoter sequences required in the output
 
     Returns:
     - List of dictionaries with the results of each predictions. Each dictionary contains:

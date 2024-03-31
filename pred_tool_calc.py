@@ -37,7 +37,7 @@ def pred_trans(seq, model_path):
     return rate
 
 
-def pred_prom(model_path, target, tolerance=float('inf'), max_results=5, max_iter=100,
+def pred_prom(model_path, target, tolerance=float('inf'), max_results=None, max_iter=None,
               UP=None, h35=None, spacs=None, h10=None, disc=None, ITR=None):
     """
     Tool to predict the promoter sequences closest to the target

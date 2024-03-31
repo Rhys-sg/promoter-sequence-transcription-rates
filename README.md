@@ -14,7 +14,7 @@ While the first two features have fixed lengths (both six base pairs), the last 
 
 According to Reddy and Reddy (2019), there is little difference in performance between pre- and post-padding in LSTMs, unlike with CNNs. However, they did find that LSTM pre-padding was marginally more accurate (5), so the padding will go upstream (before) the data. For a more comprehensive comparison, see "padding_comparison.ipynb". Additionally, I excluded the spacer sequence ('spacs' column) with lengths other than 16, 17, or 18. The other sequences have been synthetically developed and vary in size from 0 to 31. This large standard range does not help produce more accurate results and only increases runtime. The figure below shows the distribution of lengths for the spacer sequence. Excluding the synthetic spacer sequence decreased the sample size by 508, from 13,842 to 13,334.
 
-![distribution of spacer sequence lengths](supporting_documents/image.png)
+![distribution of spacer sequence lengths](supporting_documents/spacer_lengths.png)
 
 A CNN would be less well-suited for this dataset compared to an LSTM because CNNs are primarily used for grid-structured data like images. Although they can also be applied to sequential data by treating the data as a one-dimensional grid (e.g., for text classification tasks), CNNs do not inherently capture sequential dependencies as effectively as LSTMs (O'Shea and Nash, 2015). This aligned with my findings, which showed that a CNN trained on the −35 motif and −10 motif (fixed length inputs) had a 12% higher MSE compared to a LSTM trained on the same data. Lastly, I will also compare the models to LaFleur et al.'s MLR, which encodes the presence of each possible three-nucleotide sequence within each hexamer (12).
 

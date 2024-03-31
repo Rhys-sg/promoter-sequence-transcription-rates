@@ -114,7 +114,7 @@ def remove_none_params(params):
 # Generate all possible combinations of sequences
 def get_sequences(max_iter, updated_params):
 
-    all_sequences = []    
+    all_sequences = np.empty((0, 6), dtype=object)
     num_all_permutations = calc_num_permutations(updated_params)
     num_calc_permutations = 0
 
@@ -131,9 +131,9 @@ def get_sequences(max_iter, updated_params):
                                 print(f"The maximum number of iterations has been reached. Simulating {max_iter}/{num_all_permutations} permutations.")
                                 return all_sequences
 
-                            # Concatenate sequences, append to list
+                            # Concatenate sequences, append to array
                             seq = np.array(["".join(s) if isinstance(s, list) else s for s in [UP_seq, h35_seq, spacs_seq, h10_seq, disc_seq, ITR_seq]])
-                            all_sequences += [seq]
+                            all_sequences = np.append(all_sequences, [seq], axis=0)
     
     return all_sequences
 

@@ -2,6 +2,17 @@ from keras.saving import load_model
 import numpy as np
 from itertools import combinations_with_replacement
 from sortedcontainers import SortedDict
+import sys
+import os
+
+class SuppressOutput:
+    def __enter__(self):
+        self.stdout_original = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self.stdout_original
 
 def pred_trans(seq, model_path):
     """
@@ -26,7 +37,7 @@ def pred_trans(seq, model_path):
     return rate
 
 
-def pred_prom(model_path, target, tolerance=float('inf'), results=5, max_iter=100,
+def pred_prom(model_path, target, tolerance=float('inf'), max_results=5, max_iter=100,
               UP=None, h35=None, spacs=None, h10=None, disc=None, ITR=None):
     """
     Tool to predict the promoter sequences closest to the target
@@ -70,14 +81,22 @@ def pred_prom(model_path, target, tolerance=float('inf'), results=5, max_iter=10
         else:
             updated_params[param_name] = [locals()[param_name]]
 
+    # Load model
     model = load_model(model_path)
-    difference = run_models(model, target, tolerance, max_iter, updated_params)
-    return list(difference.values())[:results] # return only the top "results" results
+
+    # Create all permutations of the sequences
+    all_sequences = get_sequences(max_iter, updated_params)
+
+    # Run the model on all sequences
+    difference = run_models(model, target, tolerance, all_sequences)
+
+    # return the top "results" results
+    return list(difference.values())[:max_results]
 
     
-# Generate all possible combinations of parameters, get the model prediction, and compare with target
-def run_models(model, target, tolerance, max_iter, updated_params):
-    difference = SortedDict()
+# Generate all possible combinations of sequences
+def get_sequences(max_iter, updated_params):
+    all_sequences = []
     for UP_seq in updated_params['UP']:
         for h35_seq in updated_params['h35']:
             for spacs_seq in updated_params['spacs']:
@@ -88,21 +107,38 @@ def run_models(model, target, tolerance, max_iter, updated_params):
                             # Add max_iter to avoid long runtimes
                             max_iter -= 1
                             if max_iter <= 0: 
-                                print("Max iterations reached. Returning current results.")
-                                return difference
+                                print("Max iterations reached. Truncating results.")
+                                return all_sequences
 
-                            seq = ["".join(s) if isinstance(s, list) else s for s in [UP_seq, h35_seq, spacs_seq, h10_seq, disc_seq, ITR_seq]]
-                            rate = model.predict(one_hot(seq))[0][0]
-                            if abs(rate) - abs(target) <= tolerance:
-                                difference[abs(rate) - abs(target)] = {'Predicted log(TX/Txref)' : model.predict(one_hot(seq))[0][0],
-                                                                'Difference' : abs(rate) - abs(target),
-                                                                'UP' : seq[0],
-                                                                'h35' : seq[1],
-                                                                'spacs' : seq[2],
-                                                                'h10' : seq[3],
-                                                                'disc' : seq[4],
-                                                                'ITR' : seq[5]
-                                                                }
+                            # Concatenate sequences, append to list
+                            seq = np.array(["".join(s) if isinstance(s, list) else s for s in [UP_seq, h35_seq, spacs_seq, h10_seq, disc_seq, ITR_seq]])
+                            all_sequences += [seq]
+    
+    return all_sequences
+
+
+# Run the model on all sequences
+def run_models(model, target, tolerance, all_sequences):
+    difference = SortedDict()
+    length = len(all_sequences)
+    for i, seq in enumerate(all_sequences):
+
+        # print progress, suppress model output
+        print(f"Simulating sequence {i+1}/{length}", end='')
+        with SuppressOutput():
+            rate = model.predict(one_hot(seq))[0][0]
+
+        # add to dictionary if the difference is within the tolerance
+        if abs(rate) - abs(target) <= tolerance:
+            difference[abs(rate) - abs(target)] = {'Predicted log(TX/Txref)' : rate,
+                                            'Difference' : abs(rate) - abs(target),
+                                            'UP' : seq[0],
+                                            'h35' : seq[1],
+                                            'spacs' : seq[2],
+                                            'h10' : seq[3],
+                                            'disc' : seq[4],
+                                            'ITR' : seq[5]
+                                            }
     return difference
 
 # encode one row, concatenating each sequence

@@ -162,40 +162,67 @@ Lastly, future research should explore how the forward- and backward-compatible 
 
 ## References
 
-|  |  |
-|---|---|
-| [1] | M. Paget, “Bacterial Sigma Factors and Anti-Sigma Factors: Structure, Function and Distribution,” Biomolecules, vol. 5, no. 3, pp. 1245–1265, Jun. 2015, doi: https://doi.org/10.3390/biom5031245. |
-| [2] | OpenStax CNX, “15.2: Prokaryotic Transcription,” Biology LibreTexts, Nov. 02, 2015. https://bio.libretexts.org/Bookshelves/Introductory_and_General_Biology/General_Biology_1e_(OpenStax)/3%3A_Genetics/15%3A_Genes_and_Proteins/15.2%3A_Prokaryotic_Transcription |
-| [3] | C. Mayr, “What Are 3’ UTRs Doing?,” Cold Spring Harbor Perspectives in Biology, vol. 11, no. 10, Oct. 2019, doi: https://doi.org/10.1101/cshperspect.a034728. |
-| [4] | J. E. Pérez-Ortín, D. A. Medina, S. Chávez, and J. Moreno, “What do you mean by transcription rate?,” BioEssays, vol. 35, no. 12, pp. 1056–1062, Sep. 2013, doi: https://doi.org/10.1002/bies.201300057. |
-| [5] | T. L. LaFleur, A. Hossain, and H. M. Salis, “Automated model-predictive design of synthetic promoters to control transcriptional profiles in bacteria,” Nature Communications, vol. 13, no. 1, Sep. 2022, doi: https://doi.org/10.1038/s41467-022-32829-5. |
-| [6] | M. Van Brempt et al., “Predictive design of sigma factor-specific promoters,” Nature Communications, vol. 11, no. 1, Nov. 2020, doi: https://doi.org/10.1038/s41467-020-19446-w. |
-| [7] | K. O’Shea and R. Nash, “An Introduction to Convolutional Neural Networks,” arXiv:1511.08458 [cs], Dec. 2015, Available: https://arxiv.org/abs/1511.08458 |
-| [8] | A. Fawcett, “Data Science in 5 Minutes: What is One Hot Encoding?,” Educative: Interactive Courses for Software Developers, Feb. 11, 2021. https://www.educative.io/blog/one-hot-encoding |
-| [9] | A. Chugh, “ML | Label Encoding of datasets in Python,” GeeksforGeeks, Oct. 15, 2018. https://www.geeksforgeeks.org/ml-label-encoding-of-datasets-in-python/ |
-| [10] | J. Zou, Y. Han, and S.-S. So, “Overview of Artificial Neural Networks,” Methods in Molecular BiologyTM, vol. 458, pp. 14–22, 2008, doi: https://doi.org/10.1007/978-1-60327-101-1_2. |
-| [11] | A. Lenail, “Publication-ready NN-architecture schematics.,” alexlenail.me, May 19, 2018. https://alexlenail.me/NN-SVG/ |
-| [12] | D. Bhatt et al., “CNN Variants for Computer Vision: History, Architecture, Application, Challenges and Future Scope,” Electronics, vol. 10, no. 20, p. 2470, Oct. 2021, doi: https://doi.org/10.3390/electronics10202470. |
-| [13] | L. Alzubaidi et al., “Review of deep learning: concepts, CNN architectures, challenges, applications, future directions,” Journal of Big Data, vol. 8, no. 1, Mar. 2021, Available: https://journalofbigdata.springeropen.com/articles/10.1186/s40537-021-00444-8 |
-| [14] | R. M. Schmidt, “Recurrent Neural Networks (RNNs): A gentle Introduction and Overview,” arXiv:1912.05911 [cs, stat], Nov. 2019, Available: https://arxiv.org/abs/1912.05911 |
-| [15] | H. Salehinejad, S. Sankar, J. Barfett, E. Colak, and S. Valaee, “Recent Advances in Recurrent Neural Networks,” arXiv:1801.01078 [cs], Feb. 2018, Available: https://arxiv.org/abs/1801.01078 |
-| [16] | K. Smagulova and A. P. James, “A survey on LSTM memristive neural network architectures and applications,” The European Physical Journal Special Topics, vol. 228, no. 10, pp. 2313–2324, Oct. 2019, doi: https://doi.org/10.1140/epjst/e2019-900046-x. |
-| [17] | Y. Hu, A. Huber, J. Anumula, and S.-C. Liu, “Overcoming the vanishing gradient problem in plain recurrent networks,” arXiv:1801.06105 [cs], Jul. 2019, Available: https://arxiv.org/abs/1801.06105 |
-| [18] | P. S. Muhuri, P. Chatterjee, X. Yuan, K. Roy, and A. Esterline, “Using a Long Short-Term Memory Recurrent Neural Network (LSTM-RNN) to Classify Network Attacks,” Information, vol. 11, no. 5, p. 243, May 2020, doi: https://doi.org/10.3390/info11050243. |
-| [19] | W. Yin, K. Kann, M. Yu, and H. Schütze, “Comparative Study of CNN and RNN for Natural Language Processing,” Feb. 2017. Available: https://arxiv.org/pdf/1702.01923.pdf |
-| [20] | M. D. Reddy and N. V. S. Reddy, “Effects of padding on LSTMs and CNNs,” arXiv:1903.07288 [cs, stat], Mar. 2019, Available: https://arxiv.org/abs/1903.07288  |
-| [21] | DeepAI, “Padding (Machine Learning),” DeepAI, May 17, 2019. https://deepai.org/machine-learning-glossary-and-terms/padding |
-| [22] | A. Typas and R. Hengge, “Role of the spacer between the -35 and -10 regions in sigmas promoter selectivity in Escherichia coli,” Molecular Microbiology, vol. 59, no. 3, pp. 1037–1051, Feb. 2006, doi: https://doi.org/10.1111/j.1365-2958.2005.04998.x. |
-| [23] | J. Brownlee, “Hyperparameter Optimization With Random Search and Grid Search,” Machine Learning Mastery, Sep. 13, 2020. https://machinelearningmastery.com/hyperparameter-optimization-with-random-search-and-grid-search/ |
-| [24] | R. Bardenet, M. Brendel, B. Kégl, and M. Sebag, “Collaborative hyperparameter tuning,” proceedings.mlr.press, May 13, 2013. https://proceedings.mlr.press/v28/bardenet13.html |
-| [25] | Elite Data Science, “Overfitting in Machine Learning: What It Is and How to Prevent It,” EliteDataScience, Sep. 07, 2017. https://elitedatascience.com/overfitting-in-machine-learning |
-| [26] | Rahuljha, “LSTM Gradients,” Medium, Jun. 29, 2020. https://towardsdatascience.com/lstm-gradients-b3996e6a0296 |
-| [27] | Ryan T. J. J., “LSTMs Explained: A Complete, Technically Accurate, Conceptual Guide with Keras,” Analytics Vidhya, Sep. 10, 2021. https://medium.com/analytics-vidhya/lstms-explained-a-complete-technically-accurate-conceptual-guide-with-keras-2a650327e8f2 |
-| [28] | R. Karim, “Counting No. of Parameters in Deep Learning Models by Hand,” Medium, Dec. 04, 2019. https://towardsdatascience.com/counting-no-of-parameters-in-deep-learning-models-by-hand-8f1716241889 |
-| [29] | C. Xu et al., “Recurrent Convolutional Neural Network for Sequential Recommendation,” The Web Conference, May 2019, doi: https://doi.org/10.1145/3308558.3313408. |
-| [30] | A. Nair, P. Chauhan, B. Saha, and K. F. Kubatzky, “Conceptual Evolution of Cell Signaling,” International Journal of Molecular Sciences, vol. 20, no. 13, p. 3292, Jul. 2019, doi: https://doi.org/10.3390/ijms20133292. |
-| [31] | J. He, L. Li, J. Xu, and C. Zheng, “Relu Deep Neural Networks and Linear Finite Elements,” Journal of Computational Mathematics, vol. 38, no. 3, pp. 502–527, Jun. 2020, doi: https://doi.org/10.4208/jcm.1901-m2018-0160. |
-| [32] | J. Brownlee, “Gentle Introduction to the Adam Optimization Algorithm for Deep Learning,” Machine Learning Mastery, Jul. 02, 2017. https://machinelearningmastery.com/adam-optimization-algorithm-for-deep-learning/ |
+[1]	M. Paget, “Bacterial Sigma Factors and Anti-Sigma Factors: Structure, Function and Distribution,” Biomolecules, vol. 5, no. 3, pp. 1245–1265, Jun. 2015, doi: https://doi.org/10.3390/biom5031245.
+
+[2]	OpenStax CNX, “15.2: Prokaryotic Transcription,” Biology LibreTexts, Nov. 02, 2015. https://bio.libretexts.org/Bookshelves/Introductory_and_General_Biology/General_Biology_1e_(OpenStax)/3%3A_Genetics/15%3A_Genes_and_Proteins/15.2%3A_Prokaryotic_Transcription[3]	C. Mayr, “What Are 3’ UTRs Doing?,” Cold Spring Harbor Perspectives in Biology, vol. 11, no. 10, Oct. 2019, doi: https://doi.org/10.1101/cshperspect.a034728.
+
+[4]	J. E. Pérez-Ortín, D. A. Medina, S. Chávez, and J. Moreno, “What do you mean by transcription rate?,” BioEssays, vol. 35, no. 12, pp. 1056–1062, Sep. 2013, doi: https://doi.org/10.1002/bies.201300057.
+
+[5]	T. L. LaFleur, A. Hossain, and H. M. Salis, “Automated model-predictive design of synthetic promoters to control transcriptional profiles in bacteria,” Nature Communications, vol. 13, no. 1, Sep. 2022, doi: https://doi.org/10.1038/s41467-022-32829-5.
+
+[6]	M. Van Brempt et al., “Predictive design of sigma factor-specific promoters,” Nature Communications, vol. 11, no. 1, Nov. 2020, doi: https://doi.org/10.1038/s41467-020-19446-w.
+
+[7]	K. O’Shea and R. Nash, “An Introduction to Convolutional Neural Networks,” arXiv:1511.08458 [cs], Dec. 2015, Available: https://arxiv.org/abs/1511.08458
+
+[8]	A. Fawcett, “Data Science in 5 Minutes: What is One Hot Encoding?,” Educative: Interactive Courses for Software Developers, Feb. 11, 2021. https://www.educative.io/blog/one-hot-encoding
+
+[9]	A. Chugh, “ML | Label Encoding of datasets in Python,” GeeksforGeeks, Oct. 15, 2018. https://www.geeksforgeeks.org/ml-label-encoding-of-datasets-in-python/
+
+[10]	J. Zou, Y. Han, and S.-S. So, “Overview of Artificial Neural Networks,” Methods in Molecular BiologyTM, vol. 458, pp. 14–22, 2008, doi: https://doi.org/10.1007/978-1-60327-101-1_2.
+
+[11]	A. Lenail, “Publication-ready NN-architecture schematics.,” alexlenail.me, May 19, 2018. https://alexlenail.me/NN-SVG/
+
+[12]	D. Bhatt et al., “CNN Variants for Computer Vision: History, Architecture, Application, Challenges and Future Scope,” Electronics, vol. 10, no. 20, p. 2470, Oct. 2021, doi: https://doi.org/10.3390/electronics10202470.
+
+[13]	L. Alzubaidi et al., “Review of deep learning: concepts, CNN architectures, challenges, applications, future directions,” Journal of Big Data, vol. 8, no. 1, Mar. 2021, Available: https://journalofbigdata.springeropen.com/articles/10.1186/s40537-021-00444-8
+
+[14]	R. M. Schmidt, “Recurrent Neural Networks (RNNs): A gentle Introduction and Overview,” arXiv:1912.05911 [cs, stat], Nov. 2019, Available: https://arxiv.org/abs/1912.05911
+
+[15]	H. Salehinejad, S. Sankar, J. Barfett, E. Colak, and S. Valaee, “Recent Advances in Recurrent Neural Networks,” arXiv:1801.01078 [cs], Feb. 2018, Available: https://arxiv.org/abs/1801.01078
+
+[16]	K. Smagulova and A. P. James, “A survey on LSTM memristive neural network architectures and applications,” The European Physical Journal Special Topics, vol. 228, no. 10, pp. 2313–2324, Oct. 2019, doi: https://doi.org/10.1140/epjst/e2019-900046-x.
+
+[17]	Y. Hu, A. Huber, J. Anumula, and S.-C. Liu, “Overcoming the vanishing gradient problem in plain recurrent networks,” arXiv:1801.06105 [cs], Jul. 2019, Available: https://arxiv.org/abs/1801.06105
+
+[18]	P. S. Muhuri, P. Chatterjee, X. Yuan, K. Roy, and A. Esterline, “Using a Long Short-Term Memory Recurrent Neural Network (LSTM-RNN) to Classify Network Attacks,” Information, vol. 11, no. 5, p. 243, May 2020, doi: https://doi.org/10.3390/info11050243.
+
+[19]	W. Yin, K. Kann, M. Yu, and H. Schütze, “Comparative Study of CNN and RNN for Natural Language Processing,” Feb. 2017. Available: https://arxiv.org/pdf/1702.01923.pdf
+
+[20]	M. D. Reddy and N. V. S. Reddy, “Effects of padding on LSTMs and CNNs,” arXiv:1903.07288 [cs, stat], Mar. 2019, Available: https://arxiv.org/abs/1903.07288 
+
+[21]	DeepAI, “Padding (Machine Learning),” DeepAI, May 17, 2019. https://deepai.org/machine-learning-glossary-and-terms/padding
+
+[22]	A. Typas and R. Hengge, “Role of the spacer between the -35 and -10 regions in sigmas promoter selectivity in Escherichia coli,” Molecular Microbiology, vol. 59, no. 3, pp. 1037–1051, Feb. 2006, doi: https://doi.org/10.1111/j.1365-2958.2005.04998.x.
+
+[23]	J. Brownlee, “Hyperparameter Optimization With Random Search and Grid Search,” Machine Learning Mastery, Sep. 13, 2020. https://machinelearningmastery.com/hyperparameter-optimization-with-random-search-and-grid-search/
+
+[24]	R. Bardenet, M. Brendel, B. Kégl, and M. Sebag, “Collaborative hyperparameter tuning,” proceedings.mlr.press, May 13, 2013. https://proceedings.mlr.press/v28/bardenet13.html
+
+[25]	Elite Data Science, “Overfitting in Machine Learning: What It Is and How to Prevent It,” EliteDataScience, Sep. 07, 2017. https://elitedatascience.com/overfitting-in-machine-learning
+
+[26]	Rahuljha, “LSTM Gradients,” Medium, Jun. 29, 2020. https://towardsdatascience.com/lstm-gradients-b3996e6a0296
+
+[27]	Ryan T. J. J., “LSTMs Explained: A Complete, Technically Accurate, Conceptual Guide with Keras,” Analytics Vidhya, Sep. 10, 2021. https://medium.com/analytics-vidhya/lstms-explained-a-complete-technically-accurate-conceptual-guide-with-keras-2a650327e8f2
+
+[28]	R. Karim, “Counting No. of Parameters in Deep Learning Models by Hand,” Medium, Dec. 04, 2019. https://towardsdatascience.com/counting-no-of-parameters-in-deep-learning-models-by-hand-8f1716241889
+
+[29]	C. Xu et al., “Recurrent Convolutional Neural Network for Sequential Recommendation,” The Web Conference, May 2019, doi: https://doi.org/10.1145/3308558.3313408.
+
+[30]	A. Nair, P. Chauhan, B. Saha, and K. F. Kubatzky, “Conceptual Evolution of Cell Signaling,” International Journal of Molecular Sciences, vol. 20, no. 13, p. 3292, Jul. 2019, doi: https://doi.org/10.3390/ijms20133292.
+
+[31]	J. He, L. Li, J. Xu, and C. Zheng, “Relu Deep Neural Networks and Linear Finite Elements,” Journal of Computational Mathematics, vol. 38, no. 3, pp. 502–527, Jun. 2020, doi: https://doi.org/10.4208/jcm.1901-m2018-0160.
+
+[32]	J. Brownlee, “Gentle Introduction to the Adam Optimization Algorithm for Deep Learning,” Machine Learning Mastery, Jul. 02, 2017. https://machinelearningmastery.com/adam-optimization-algorithm-for-deep-learning/
 
 ## Data Availability
 

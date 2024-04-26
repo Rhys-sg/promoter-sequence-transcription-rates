@@ -1,38 +1,35 @@
 # Predictive Artificial Neural Networks for mRNA Transcriptional Profiles and Sequence Motifs
 
-## Forward- and Backward-Compatible Prediction Tools
+## Description
 
-### Description
+Messenger ribonucleic acid (mRNA) synthesis in all organisms is performed by the RNA polymerases, which transcribe corresponding nucleotide base pairs in a gene. The rate of mRNA synthesis is an essential parameter in gene expression. Researchers, such as Van Brempt et al. [6] and LaFleur et al.’s [5] have developed machine learning tools to predict the transcription initiation rates (TX) in E. coli based on RNAP/σ70-promoter interactions. However, there are currently no prediction tools (i) designed for sequential data, (ii) that can account for the complexity of the interplay between regions and employ a modeling method that does not assume independence between sections, and (iii) afford backward-compatible prediction of novel σ70 promoter sequences motifs given a desired TX. This project extends the current research by developing forward- and backward-compatible prediction tools to more accurately predict TX across novel σ70 promoter sequence motifs and novel sequence motifs from TX. The tool uses an artificial neural network (ANN) with a bidirectional information feed between nodes and layers, a state memory, and a multilayer cell structure. The model was optimized using hyperparameter tuning and, compared to the eminent 346-parameter multiple linear regression (MLR), has 81,845 total parameters. The LSTM is “black-boxed” and not as effective for concluding meaningful relationships using parameter analysis. However, it has a significantly lower MSE (0.1400 compared to 0.2515, a decrease of 44%). This model is also the first backward-compatible prediction model, predicting novel sequence motifs given TX, and affording synthetic engineering of non-canonical sequence motifs with desired TX. 
 
 This research has implemented the optimized LSTM model as the back-end for two prediction tools. The first tool is similar to Van Brempt et al. [6] and LaFleur et al.’s [5] and can be used by molecular biologists to more accurately predict genetic context effects, design σ70 promoters with desired transcription rates, and identify undesired promoters inside engineered genetic systems. It works as a wrapper for the model—given a novel sequence and the model file, the tool uses the model and returns a predicted TX given the sequence.
 
 The second tool is the first backward-compatible prediction model, returning novel sequence motifs with predicted TX closest to a desired value. This tool is more applicable in biophysics and genetic engineering as it can simulate TX of synthetic and non-canonical sequence motifs before engineering them. The tool requires two arguments (the model and desired TX) and has nine optional arguments: the desired TX tolerance, maximum returned results, maximum iterations, and all specified sequence motifs required in the output. The tool calculates every permutation of sequence motifs, predicts a TX value for each permutation, and then returns the sequences with the closest TX. This approach has a runtime of O(M * N!), where N is the sequence length, and M is the number of LSTM parameters. Future research should seek to improve this approach by hashing simulated combinations, applying an inverse transformation, or creating a specialized model. However, all of these approaches still have their respective limitations.
 
-### Front-end: 'prediction_tool.ipynb'
+## Front-end: 'prediction_tool.ipynb'
 
 See module for example uses.
 
-#### Transcription Rate Prediction
+### Transcription Rate Prediction
 
 To predict the transcription rate of a novel sequence, use the `pred_trans` function from the `tool_backend.pred_tool_calc` module. This function requires the following inputs:
 
 - `seq`: A list of DNA sequences for prediction.
 - `model_path`: Path to the trained model file.
 
-#### Promoter Sequence Prediction
+### Promoter Sequence Prediction
 
 To predict promoter sequences closest to a target transcription rate, use the `pred_prom` function from the `tool_backend.pred_tool_calc` module. This function requires various parameters including the target rate and optional sequences.
 
-### Back-end: tool_backend/pred_tool_calc.py
+## Back-end: tool_backend/pred_tool_calc.py
 
 This Python module provides backend functionalities for predicting transcription rates and promoter sequences in 'prediction_tool.ipynb'. It includes functions for loading models, predicting transcription rates, and performing combinatorial predictions for promoter sequences. See module for more details.
 
-### Other Modules:
+## Other Modules:
 
 See /comparison for details on different model approaches, including one-hot-encoding, data preprocessing, CNN, RNN, and MLR comparisons. 'main_comparison.ipynb' includes an overview of all approaches. See /tuning for steps, models, and comparison from the LSTM hyperparameter tuning.
-
-## Abstract
-Messenger ribonucleic acid (mRNA) synthesis in all organisms is performed by the RNA polymerases, which transcribe corresponding nucleotide base pairs in a gene. The rate of mRNA synthesis is an essential parameter in gene expression. Researchers [5], [6] have developed machine learning tools to predict the transcription initiation rates (TX) in E. coli based on RNAP/σ70-promoter interactions. However, there are currently no prediction tools (i) designed for sequential data, (ii) that can account for the complexity of the interplay between regions and employ a modeling method that does not assume independence between sections, and (iii) afford backward-compatible prediction of novel σ70 promoter sequences motifs given a desired TX. This project extends the current research by developing forward- and backward-compatible prediction tools to more accurately predict TX across novel σ70 promoter sequence motifs and novel sequence motifs from TX. The tool uses an artificial neural network (ANN) with a bidirectional information feed between nodes and layers, a state memory, and a multilayer cell structure. The model was optimized using hyperparameter tuning and, compared to the eminent 346-parameter multiple linear regression (MLR), has 81,845 total parameters. The LSTM is “black-boxed” and not as effective for concluding meaningful relationships using parameter analysis. However, it has a significantly lower MSE (0.1400 compared to 0.2515, a decrease of 44%). This model is also the first backward-compatible prediction model, predicting novel sequence motifs given TX, and affording synthetic engineering of non-canonical sequence motifs with desired TX. 
 
 ## Introduction 
 Messenger ribonucleic acid (mRNA) synthesis in all organisms is performed by the RNA polymerases, which transcribe corresponding nucleotide base pairs in a gene. In bacteria, the initiation of transcription at promoters requires a dissociable specificity subunit of RNA polymerase (RNAP) called sigma (σ) that binds to the core to form the “holoenzyme” [1]. In prokaryotes, transcription, translation, and mRNA degradation are simultaneous, while in eukaryotes, after transcription, the mRNA may be processed, edited, and transported before translation [2]. During translation, mature mRNA is transported to the ribosome, where each three-nucleotide subsequence (codon) in the coding region of mRNA is matched to an amino acid. The generated sequence of amino acids (peptide) expresses the gene as a phenotypic trait [2]. Additionally, untranslated regions (UTRs) are sections of the mRNA upstream (before) the start codon and downstream (after) the stop codon. These are not translated but serve several roles in gene expression, including mRNA stability, localization, and translational efficiency [3].

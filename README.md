@@ -23,7 +23,7 @@ To predict the transcription rate of a novel sequence, use the `pred_trans` func
 
 To predict promoter sequences closest to a target transcription rate, use the `pred_prom` function from the `tool_backend.pred_tool_calc` module. This function requires various parameters including the target rate and optional sequences.
 
-### Back-end: 'tool_backend/pred_tool_calc.py'
+### Back-end: tool_backend/pred_tool_calc.py
 
 This Python module provides backend functionalities for predicting transcription rates and promoter sequences in 'prediction_tool.ipynb'. It includes functions for loading models, predicting transcription rates, and performing combinatorial predictions for promoter sequences. See module for more details.
 

@@ -31,6 +31,8 @@ def pred_trans(seq, model_path):
         return "The input sequence must have 6 elements."
     try:
         enc_seq = one_hot(seq)
+        print(enc_seq)
+        print(enc_seq[0].shape)
         model = load_model(model_path)
         with SuppressOutput():
             rate = model.predict(enc_seq)
@@ -67,7 +69,6 @@ def pred_prom(model_path, target, tolerance=float('inf'), max_results=None, max_
     """
     
     try:
-        
         # Update "None" values in parameters with all valid lengths
         updated_params = remove_none_params(locals())
 
@@ -90,12 +91,13 @@ def pred_prom(model_path, target, tolerance=float('inf'), max_results=None, max_
 # Update None-value parameters, replace with all possible combinations
 def remove_none_params(params):
     # Define all valid lengths of each sequence
-    lengths = {'UP': [16, 20, 22],
-                'h35': [6],
-                'spacs': [16, 17, 18],
-                'h10': [6],
-                'disc': [8, 6, 7],
-                'ITR': [20, 21]
+    lengths = {
+        'UP': [16, 20, 22],
+        'h35': [6],
+        'spacs': [15, 16, 17, 18, 19],
+        'h10': [6],
+        'disc': [8, 6, 7],
+        'ITR': [20, 21]
     }
 
     # Update parameters
@@ -179,8 +181,15 @@ def one_hot(feature):
         
 # encodes one sequence (one row at one column)
 def padded_one_hot_encode(sequence):
-    mapping = {'A': [1,0,0,0,0], 'C': [0,1,0,0,0], 'G': [0,0,1,0,0], 'T': [0,0,0,1,0], '0': [0,0,0,0,1]}
+    mapping = {'A': [1,0,0,0,0], 'C': [0,1,0,0,0], 'G': [0,0,1,0,0], 'T': [0,0,0,1,0], '0': [0,0,0,0]}
     encoding = []
     for nucleotide in sequence:
          encoding += [mapping[nucleotide]]
     return encoding
+
+
+seq = ['TTTTCTATCTACGTAC', 'TTGACA', 'CTATTTCCTATTTCTCT', 'TATAAT', 'CCCCGCGG', 'CTCTACCTTAGTTTGTACGTT']
+model_path = 'models/Hyperparameter_tuned.keras'
+
+rate = pred_trans(seq, model_path)
+print(f'Predicted transcrition rate (log(TX/Txref)): {rate}')

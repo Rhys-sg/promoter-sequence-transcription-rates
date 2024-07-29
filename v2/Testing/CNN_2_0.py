@@ -3,8 +3,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
-from keras.models import Sequential
-from keras.models import load_model
+from keras.models import Sequential, load_model
 from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
 from keras.optimizers import Adam
 import seaborn as sns

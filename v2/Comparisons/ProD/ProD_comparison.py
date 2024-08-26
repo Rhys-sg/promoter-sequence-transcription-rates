@@ -14,9 +14,9 @@ def get_predictions(model, X_test):
     
     average_prediction = np.mean(predictions)
 
-    # 16% of model variance explained by promoter, according to LaFleur's paper
-    min_val = average_prediction - 0.8
-    max_val = average_prediction + 0.8
+    # 0.206 of model variance explained by spacer element
+    min_val = average_prediction - 0.103
+    max_val = average_prediction + 0.103
     
     def normalize(pred, min_val, max_val):
         return 10 * (pred - min_val) / (max_val - min_val)
@@ -25,8 +25,6 @@ def get_predictions(model, X_test):
     
     return [round(pred) for pred in normalized_predictions]
 
-
-
 def get_preprocess_X_test(df):
     ProD_upstream = 'TTGCTGGATAACTTTACG'
     ProD_downstream = 'TATAATATTCAGG'
@@ -34,22 +32,26 @@ def get_preprocess_X_test(df):
     TR_extension = 'CTCTACCTTAGTTTGTACGTT'
 
     X_test = [UP_extension + ProD_upstream + spacer[0] + ProD_downstream + TR_extension for spacer in df[['spacer']].values]
-    max_length = 79
-    return preprocess_all(X_test, max_length)
+    max_length = 87
+    X_test_encoded, max_length = encode_sequences(X_test, max_length)
+    
+    print(f"X_test shape: {X_test_encoded.shape}")
+    print(f"X_test data type: {X_test_encoded.dtype}")
+    
+    return X_test_encoded
 
-def preprocess_all(X, max_length):
-    upstream_padding = []
-    for seq in X:
-        zeros = '0' * (max_length-len(seq))
-        upstream_padding += [padded_one_hot_encode(zeros + seq)]
-    return np.array(upstream_padding)
+# Ensure the data type is float32
+def encode_sequences(X, max_length=None):
+    if max_length is None:
+        max_length = max(len(seq) for seq in X)
+    encoded_sequences = [padded_one_hot_encode('0' * (max_length - len(seq)) + seq) for seq in X]
+    return np.array(encoded_sequences, dtype=np.float32), max_length
+
 
 def padded_one_hot_encode(sequence):
     mapping = {'A': [1,0,0,0], 'C': [0,1,0,0], 'G': [0,0,1,0], 'T': [0,0,0,1], '0': [0,0,0,0]}
-    encoding = []
-    for nucleotide in sequence:
-        encoding += [mapping[nucleotide]]
-    return encoding
+    return [mapping[nucleotide] for nucleotide in sequence]
+
 
 def plot_confusion_matrices(y_true, y_pred1, y_pred2, model_name1, model_name2):
     cm1 = confusion_matrix(y_true, y_pred1, labels=np.arange(0, 11))
@@ -74,14 +76,14 @@ def plot_confusion_matrices(y_true, y_pred1, y_pred2, model_name1, model_name2):
     plt.show()
 
 if __name__ == '__main__':
-    df = pd.read_csv('v2/data/ProD_sigma70_spacer_data.csv')
+    df = pd.read_csv('v2/Data/ProD_sigma70_spacer_data.csv')
 
     X_test = get_preprocess_X_test(df)
 
     scaler = MinMaxScaler()
     y_test = scaler.fit_transform(df[['assumed_observed']].astype(float)) * 10
 
-    model_synth_cure = load_model('v2/Testing/CNN_concatenate.keras')
+    model_synth_cure = load_model('v2/Models/CNN_2_1.keras')
     df['Synth_CURE_predicted'] = get_predictions(model_synth_cure, X_test)
 
     assumed_observed = np.ravel(df['assumed_observed'])

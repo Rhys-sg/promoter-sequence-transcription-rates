@@ -60,17 +60,19 @@ def promoter_data_augmentation():
 
                 filtered_df = ProD_df[ProD_df['assumed_observed'] == i]
                 
-                ProD_spacer, ProD_observed = filtered_df.sample(random_state=random_seed).values[0]
+                # for each LaFleur promoter, we will sample 30 ProD spacers
+                for _ in range(30):
+                    ProD_spacer, ProD_observed = filtered_df.sample(random_state=random_seed).values[0]
 
-                adjusted_transcription = row['Observed'] * (1 + (ProD_observed * spacer_variance) - (spacer_variance / 2))
-                
-                augmented_data['UP'].append(row['UP'])
-                augmented_data['h35'].append(row['h35'])
-                augmented_data['spacs'].append(ProD_spacer)
-                augmented_data['h10'].append(row['h10'])
-                augmented_data['disc'].append(row['disc'])
-                augmented_data['ITR'].append(row['ITR'])
-                augmented_data['Observed'].append(adjusted_transcription)
+                    adjusted_transcription = row['Observed'] * (1 + (ProD_observed * spacer_variance) - (spacer_variance / 2))
+                    
+                    augmented_data['UP'].append(row['UP'])
+                    augmented_data['h35'].append(row['h35'])
+                    augmented_data['spacs'].append(ProD_spacer)
+                    augmented_data['h10'].append(row['h10'])
+                    augmented_data['disc'].append(row['disc'])
+                    augmented_data['ITR'].append(row['ITR'])
+                    augmented_data['Observed'].append(adjusted_transcription)
         except:
             print('an error occurred with row:', row)
 
@@ -80,7 +82,7 @@ def promoter_data_augmentation():
 
     augmented_df['Observed'] = MinMaxScaler().fit_transform(augmented_df[['Observed']])
     
-    augmented_df.to_csv('v2/data/augmented_data_1.0.csv', index=False)
+    augmented_df.to_csv('v2/data/augmented_data_3_0.csv', index=False)
 
     print(augmented_df.head())
     print(augmented_df.describe())

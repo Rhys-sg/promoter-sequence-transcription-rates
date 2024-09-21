@@ -76,7 +76,6 @@ def plot_scatter(observed, predicted):
     min_val = min(min(observed), min(predicted))
     max_val = max(max(observed), max(predicted))
     plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', label='y = x line')
-    plt.title('ProD vs. Our Prediction')
     plt.xlabel('ProD')
     plt.ylabel('Our Prediction')
     plt.legend()

@@ -1,3 +1,17 @@
+"""
+This is the class implementation refactoring the model architecture and preprocessing methods.
+This version is trained on augmented_data_2_0.csv which LaFleur et al.'s base data and data augmented
+with promoters from Van Brempt et al.
+
+For X data, it onehot encodes base pairs in each element and appeneds them to a 2 dimensional array.
+It pads each element so that each element is the same length. This was a design decision that we changed later.
+The y data is the 'Observed log(TX/Txref)' which is normalized using sklearn's MinMaxScaler (from 0,
+high expression to 1, low expression).
+
+"""
+
+
+
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler

@@ -24,14 +24,14 @@ def preprocess_X_y(df, num_augmentations=1):
     X_expressions = []
     y = []
 
-    for sequence, expression in zip(sequences, expressions):
+    for full_sequence, expression in zip(sequences, expressions):
         for _ in range(num_augmentations):
             len_removed = random.randint(1, 10)
-            input, output = remove_section_get_features(sequence, len_removed)
+            masked_sequence, missing_element = remove_section_get_features(full_sequence, len_removed)
 
-            X_sequence.append(one_hot_encode_input(apply_padding(input, 150)))
+            X_sequence.append(one_hot_encode_input(apply_padding(masked_sequence, 150)))
             X_expressions.append(expression)
-            y.append(one_hot_encode_output(apply_padding(output, 150)))
+            y.append(one_hot_encode_output(apply_padding(full_sequence, 150)))
 
     return np.array(X_sequence), np.array(X_expressions), np.array(y)
 
@@ -69,8 +69,7 @@ def build_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_d
     sequence_input = Input(shape=(sequence_length, input_nucleotide_dim), name='sequence_input')
     expression_input = Input(shape=(sequence_length, expression_dim), name='expression_input')
     combined_input = Concatenate()([sequence_input, expression_input])
-    masked_input = Masking(mask_value=0.0)(combined_input)
-    lstm_out = LSTM(128, return_sequences=True)(masked_input)
+    lstm_out = LSTM(128, return_sequences=True)(combined_input)
     output = Dense(output_nucleotide_dim, activation='softmax')(lstm_out)
     model = Model(inputs=[sequence_input, expression_input], outputs=output)
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])

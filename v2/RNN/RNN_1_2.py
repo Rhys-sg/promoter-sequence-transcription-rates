@@ -31,7 +31,7 @@ def preprocess_X_y(df, num_augmentations=1):
 
             X_sequence.append(one_hot_encode(apply_padding(input, 150)))
             X_expressions.append(expression)
-            y.append(one_hot_encode(apply_padding(output, 150)))
+            y.append(one_hot_encode(apply_padding(sequence, 150)))
 
     return np.array(X_sequence), np.array(X_expressions), np.array(y)
 

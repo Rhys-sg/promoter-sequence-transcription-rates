@@ -68,7 +68,7 @@ def build_lstm_model(sequence_length=150, nucleotide_dim=4, expression_dim=1):
     
     return model
 
-def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, batch_size, epochs=10, learning_rate=0.01):
+def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_train, batch_size, epochs=10, learning_rate=0.01):
     
     # Freeze CNN model layers and Ensure LSTM model layers are trainable
     for layer in cnn_model.layers:
@@ -79,6 +79,7 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, ba
 
     X_expressions_train = np.expand_dims(X_expressions_train, axis=-1)
     X_expressions_train = np.repeat(X_expressions_train, X_sequence_train.shape[1], axis=1)
+    y_train = np.repeat(y_train, X_sequence_train.shape[1], axis=1)
     optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate)
     loss_history = []
 
@@ -87,9 +88,10 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, ba
         indices = np.arange(X_sequence_train.shape[0])
         np.random.shuffle(indices)
         
-        # Shuffle both input datasets
+        # Shuffle both input datasets and output datasets, maintaining order
         X_sequence_train = X_sequence_train[indices]
         X_expressions_train = X_expressions_train[indices]
+        y_train = y_train[indices]
 
         # Process data in batches
         for i in range(0, len(X_sequence_train), batch_size):
@@ -100,19 +102,43 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, ba
             # Select batch data
             X_sequence_batch = X_sequence_train[i:i + batch_size]
             X_expressions_batch = X_expressions_train[i:i + batch_size]
+            y_batch = y_train[i:i + batch_size]
 
             with tf.GradientTape() as tape:
                 predicted_sequence = lstm_model([X_sequence_batch, X_expressions_batch])
-                predicted_expression = cnn_model(predicted_sequence)
-                error = tf.reduce_mean(tf.square(X_expressions_batch - predicted_expression))
+                loss = loss(predicted_sequence, X_expressions_batch, y_batch, cnn_model)
 
             # Calculate gradients only for the LSTM model
-            gradients = tape.gradient(error, lstm_model.trainable_variables)
+            gradients = tape.gradient(loss, lstm_model.trainable_variables)
             optimizer.apply_gradients(zip(gradients, lstm_model.trainable_variables))
         
-        loss_history.append(error.numpy())
+        loss_history.append(loss.numpy())
 
     return loss_history
+
+def loss_func(predicted_sequence, X_expressions_batch, y_train, cnn_model):
+    """
+    Custom loss function to calculate the MSE between the predicted expression and the true expression.
+    It is based on "Expression Consistency Loss," which ensures that the generated DNA sequence has a
+    similar expression to the given sequence expression using mean squared error.
+
+    Implementation:
+      1) If the predicted sequence is equal to the true sequence, the loss is 0.
+      2) Otherwise, the predicted sequence is passed through the CNN model to get the predicted expression.
+      3) The loss is then calculated as the MSE between the true expression and the predicted expression.
+    
+    This function does NOT include
+      1) GAN Adversarial Loss: A binary cross-entropy loss used to train the discriminator to differentiate
+         between real and generated sequences.
+      2) Deviation Loss: A loss that penalizes the deviation of the generated sequence from the unmasked
+         sections of the input sequence.
+
+    """
+    if predicted_sequence == y_train:
+        return 0
+    predicted_expression = cnn_model(predicted_sequence)
+    return tf.reduce_mean(tf.square(X_expressions_batch - predicted_expression))
+
 
 def evaluate_model(lstm_model, cnn_model, X_sequence_test, X_expressions_test):
     X_expressions_test = np.expand_dims(X_expressions_test, axis=-1)
@@ -122,6 +148,25 @@ def evaluate_model(lstm_model, cnn_model, X_sequence_test, X_expressions_test):
     mse = tf.reduce_mean(tf.square(X_expressions_test - predicted_expression)).numpy()
     
     return mse, predicted_expression
+
+def predict_with_lstm(lstm_model, sequence, expression, max_length=150, scaler=None):
+    one_hot_encoded_sequence = np.array([one_hot_encode(apply_padding(sequence, max_length))])
+    
+    # Use the pre-fitted scaler (from training) to normalize the expression
+    if scaler is not None:
+        normalized_expression = scaler.transform(np.array([[expression]]))
+    else:
+        raise ValueError("Please provide a pre-fitted MinMaxScaler.")
+    
+    normalized_expression = np.repeat(normalized_expression, max_length, axis=1)
+    normalized_expression = np.expand_dims(normalized_expression, axis=-1) 
+    
+    one_hot_encoded_sequence = one_hot_encoded_sequence.reshape(1, 150, 4)
+    normalized_expression = normalized_expression.reshape(1, 150, 1)
+    
+    return lstm_model.predict([one_hot_encoded_sequence, normalized_expression])
+
+
 
 if __name__ == '__main__':
         

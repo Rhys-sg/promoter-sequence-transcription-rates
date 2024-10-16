@@ -29,9 +29,9 @@ def preprocess_X_y(df, num_augmentations=1):
             len_removed = random.randint(1, 10)
             input, output = remove_section_get_features(sequence, len_removed)
 
-            X_sequence.append(one_hot_encode(apply_padding(input, 150)))
+            X_sequence.append(one_hot_encode_input(apply_padding(input, 150)))
             X_expressions.append(expression)
-            y.append(one_hot_encode(apply_padding(output, 150)))
+            y.append(one_hot_encode_output(apply_padding(output, 150)))
 
     return np.array(X_sequence), np.array(X_expressions), np.array(y)
 
@@ -45,24 +45,33 @@ def remove_section_get_features(sequence, section_length):
 def apply_padding(sequence, max_length):
     return '0' * (max_length - len(sequence)) + sequence
 
-def one_hot_encode(sequence):
+def one_hot_encode_input(sequence):
+    mapping = {'A': [1, 0, 0, 0, 0],
+               'T': [0, 1, 0, 0, 0],
+               'C': [0, 0, 1, 0, 0],
+               'G': [0, 0, 0, 1, 0],
+               '_': [0, 0, 0, 0, 1],  # Placeholder for missing section
+               '0': [0, 0, 0, 0, 0]}  # Placeholder for padding
+
+    return [mapping[nucleotide.upper()] for nucleotide in sequence]
+
+def one_hot_encode_output(sequence):
     mapping = {'A': [1, 0, 0, 0],
                'T': [0, 1, 0, 0],
                'C': [0, 0, 1, 0],
                'G': [0, 0, 0, 1],
-               '_': [0, 0, 0, 0],  # Placeholder for missing section
                '0': [0, 0, 0, 0]}  # Placeholder for padding
 
     return [mapping[nucleotide.upper()] for nucleotide in sequence]
 
 # Function to build the LSTM model
-def build_model(sequence_length=150, nucleotide_dim=4, expression_dim=1):
-    sequence_input = Input(shape=(sequence_length, nucleotide_dim))
-    expression_input = Input(shape=(sequence_length, expression_dim))
+def build_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_dim=4, expression_dim=1):
+    sequence_input = Input(shape=(sequence_length, input_nucleotide_dim), name='sequence_input')
+    expression_input = Input(shape=(sequence_length, expression_dim), name='expression_input')
     combined_input = Concatenate()([sequence_input, expression_input])
     masked_input = Masking(mask_value=0.0)(combined_input)
     lstm_out = LSTM(128, return_sequences=True)(masked_input)
-    output = Dense(nucleotide_dim, activation='softmax')(lstm_out)
+    output = Dense(output_nucleotide_dim, activation='softmax')(lstm_out)
     model = Model(inputs=[sequence_input, expression_input], outputs=output)
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
@@ -96,7 +105,7 @@ if __name__ == '__main__':
         X_sequence, X_expressions, y, test_size=0.2, random_state=42)
 
     print('Building and training the model...')
-    model = build_model(sequence_length=150, nucleotide_dim=4, expression_dim=1)
+    model = build_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_dim=4, expression_dim=1)
     
     print('Training the model...')
     train_model(model, X_sequence_train, X_expressions_train, y_train, batch_size=32, epochs=10)

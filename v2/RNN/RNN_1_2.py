@@ -4,8 +4,8 @@ from sklearn.preprocessing import MinMaxScaler
 import random
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, LSTM, Dense, Masking, Concatenate
+from tensorflow.keras.models import Model # type: ignore
+from tensorflow.keras.layers import Input, LSTM, Dense, Masking, Concatenate # type: ignore
 
 def load_and_preprocess_data(file_path):
     df = pd.read_csv(file_path)

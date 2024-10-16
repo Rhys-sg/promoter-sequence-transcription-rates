@@ -3,10 +3,10 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import random
 from sklearn.model_selection import train_test_split
-from tensorflow.keras import layers
-from tensorflow.keras.models import Sequential
-from keras.optimizers import Adam
-from keras.callbacks import EarlyStopping
+from tensorflow.keras import layers # type: ignore
+from tensorflow.keras.models import Sequential # type: ignore
+from keras.optimizers import Adam # type: ignore
+from keras.callbacks import EarlyStopping # type: ignore
 
 def load_and_preprocess_data(file_path):
     df = pd.read_csv(file_path)

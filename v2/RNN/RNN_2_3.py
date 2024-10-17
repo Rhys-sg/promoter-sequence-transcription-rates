@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.models import Model, load_model # type: ignore
 from tensorflow.keras.layers import Input, LSTM, Dense, Concatenate, Lambda # type: ignore
-from tensorflow.keras import backend as K # type: ignore
+import keras
 
 def load_and_preprocess_data(file_path):
     df = pd.read_csv(file_path)
@@ -66,38 +66,36 @@ def one_hot_encode_output(sequence):
 
     return [mapping[nucleotide.upper()] for nucleotide in sequence]
 
-# Custom masking function for output
-@tf.keras.utils.register_keras_serializable(package="Custom", name="custom_copy_masked_elements")
+# Register the custom function
+@keras.saving.register_keras_serializable(package="Custom", name="custom_copy_masked_elements")
 def custom_copy_masked_elements(args):
     sequence_input, lstm_output = args
     mask = tf.constant([0, 0, 0, 0, 0], dtype=tf.float32)
     is_masked = tf.reduce_all(tf.equal(sequence_input, mask), axis=-1, keepdims=True)
-    # Get the argmax of lstm_output
-    output_indices = tf.argmax(lstm_output, axis=-1)
-    
-    # Create one-hot encoding from indices
-    one_hot_output = tf.one_hot(output_indices, depth=4)  # depth=4 for A, T, C, G
-    
-    # Use one-hot encoded output where not masked
-    output = tf.where(is_masked, one_hot_output, sequence_input[..., :4])
+    output = tf.where(is_masked, lstm_output, sequence_input[..., :4])
     
     return output
 
 def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_dim=4, expression_dim=1):
+    # Input layers
     sequence_input = Input(shape=(sequence_length, input_nucleotide_dim), name='sequence_input')
     expression_input = Input(shape=(sequence_length, expression_dim), name='expression_input')
+
+    # Combine inputs
     combined_input = Concatenate()([sequence_input, expression_input])
     lstm_out = LSTM(128, return_sequences=True)(combined_input)
     lstm_dense_output = Dense(output_nucleotide_dim, activation='softmax')(lstm_out)
-    
-    # Use the custom function to mask and convert to one-hot
-    final_output = Lambda(custom_copy_masked_elements)([sequence_input, lstm_dense_output])
-    
-    # Define the model
-    model = Model(inputs=[sequence_input, expression_input], outputs=final_output)
+
+    # Masked output based on custom logic
+    masked_output = Lambda(custom_copy_masked_elements)([sequence_input, lstm_dense_output])
+
+    # Convert the masked output to one-hot encoded boolean values
+    onehot_output = Lambda(lambda x: tf.round(x))(masked_output)
+    model = Model(inputs=[sequence_input, expression_input], outputs=onehot_output)
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    
+
     return model
+
 
 
 def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_train, batch_size, epochs=10, learning_rate=0.01):
@@ -174,10 +172,6 @@ def loss_func(predicted_sequence, X_expressions_batch, y_train, cnn_model):
 def evaluate_model(lstm_model, cnn_model, X_sequence_test, X_expressions_test):
     X_expressions_test = np.expand_dims(X_expressions_test, axis=-1)
     X_expressions_test = np.repeat(X_expressions_test, X_sequence_test.shape[1], axis=1)
-
-    print(X_sequence_test.shape)
-    print(X_expressions_test.shape)
-
     predicted_sequence = lstm_model.predict([X_sequence_test, X_expressions_test])
     predicted_expression = cnn_model.predict(predicted_sequence)
     mse = tf.reduce_mean(tf.square(X_expressions_test - predicted_expression)).numpy()
@@ -189,8 +183,6 @@ def predict_with_lstm(lstm_model, sequence, expression, scaler, max_length=150):
     normalized_expression = scaler.transform([[expression]])
     normalized_expression = np.repeat(normalized_expression, max_length, axis=1)
     predicted_sequence = lstm_model.predict([one_hot_encoded_sequence, normalized_expression])
-
-    print(predicted_sequence[0])
     
     return onehot_decode_output(predicted_sequence)
 

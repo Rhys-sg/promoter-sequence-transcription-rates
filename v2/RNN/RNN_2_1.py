@@ -25,14 +25,14 @@ def preprocess_X_y(df, num_augmentations=1):
     X_expressions = []
     y = []
 
-    for sequence, expression in zip(sequences, expressions):
+    for full_sequence, expression in zip(sequences, expressions):
         for _ in range(num_augmentations):
             len_removed = random.randint(1, 10)
-            input, output = remove_section_get_features(sequence, len_removed)
+            masked_sequence, missing_element = remove_section_get_features(full_sequence, len_removed)
 
-            X_sequence.append(one_hot_encode(apply_padding(input, 150)))
+            X_sequence.append(one_hot_encode_input(apply_padding(masked_sequence, 150)))
             X_expressions.append(expression)
-            y.append(one_hot_encode(apply_padding(output, 150)))
+            y.append(one_hot_encode_output(apply_padding(full_sequence, 150)))
 
     return np.array(X_sequence), np.array(X_expressions), np.array(y)
 
@@ -46,23 +46,32 @@ def remove_section_get_features(sequence, section_length):
 def apply_padding(sequence, max_length):
     return '0' * (max_length - len(sequence)) + sequence
 
-def one_hot_encode(sequence):
+def one_hot_encode_input(sequence):
+    mapping = {'A': [1, 0, 0, 0, 0],
+               'T': [0, 1, 0, 0, 0],
+               'C': [0, 0, 1, 0, 0],
+               'G': [0, 0, 0, 1, 0],
+               '_': [0, 0, 0, 0, 1],  # Placeholder for masking
+               '0': [0, 0, 0, 0, 0]}  # Placeholder for padding
+
+    return [mapping[nucleotide.upper()] for nucleotide in sequence]
+
+def one_hot_encode_output(sequence):
     mapping = {'A': [1, 0, 0, 0],
                'T': [0, 1, 0, 0],
                'C': [0, 0, 1, 0],
                'G': [0, 0, 0, 1],
-               '_': [0, 0, 0, 0],  # Placeholder for missing section
                '0': [0, 0, 0, 0]}  # Placeholder for padding
 
     return [mapping[nucleotide.upper()] for nucleotide in sequence]
 
 # Function to build the LSTM model
-def build_lstm_model(sequence_length=150, nucleotide_dim=4, expression_dim=1):
-    sequence_input = Input(shape=(sequence_length, nucleotide_dim), name='sequence_input')
+def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_dim=4, expression_dim=1):
+    sequence_input = Input(shape=(sequence_length, input_nucleotide_dim), name='sequence_input')
     expression_input = Input(shape=(sequence_length, expression_dim), name='expression_input')
     combined_input = Concatenate()([sequence_input, expression_input])
     lstm_out = LSTM(128, return_sequences=True)(combined_input)
-    output = Dense(nucleotide_dim, activation='softmax')(lstm_out)
+    output = Dense(output_nucleotide_dim, activation='softmax')(lstm_out)
     model = Model(inputs=[sequence_input, expression_input], outputs=output)
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
@@ -138,7 +147,7 @@ if __name__ == '__main__':
 
     print('Building/loading models...')
     cnn_model = load_model('v2/Models/CNN_5_0.keras')
-    lstm_model = build_lstm_model(sequence_length=150, nucleotide_dim=4, expression_dim=1)
+    lstm_model = build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_dim=4, expression_dim=1)
 
     print('Training the models...')
     loss_history = train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, batch_size=512, epochs=10, learning_rate=0.01)

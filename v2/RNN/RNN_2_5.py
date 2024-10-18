@@ -76,16 +76,25 @@ def custom_copy_masked_elements(args):
     
     return output
 
-# Register the custom temperature-scaled softmax function
-@keras.saving.register_keras_serializable(package="Custom", name="custom_copy_temperature_scaled_softmax_elements")
-def custom_copy_temperature_scaled_softmax_elements(args):
-    logits, temperature = args
-    return tf.nn.softmax(logits / temperature)
+# Register the custom Argmax with a Straight-Through Estimator (STE)
+@keras.saving.register_keras_serializable(package="Custom", name="custom_copy_argmax_STE")
+def custom_copy_argmax_STE(args):
+    logits = args[0]
 
-def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_dim=4, expression_dim=1, temperature=0.5):
-    # Convert temperature to tensor
-    temperature_tensor = tf.constant(temperature, dtype=tf.float32)
+    # Perform the softmax to get probabilities
+    softmax_output = tf.nn.softmax(logits)
+    
+    # Create a one-hot encoded version of the argmax indices
+    one_hot_output = tf.one_hot(tf.argmax(softmax_output, axis=-1), depth=tf.shape(logits)[-1])
+    
+    # Straight-Through Estimator
+    # During training, we pass the one-hot output back; during inference, we can use the original logits
+    # For simplicity, we can apply a hard threshold for the STE
+    output = tf.where(tf.random.uniform(tf.shape(one_hot_output)) < 0.5, one_hot_output, softmax_output)
+    
+    return output
 
+def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_dim=4, expression_dim=1):
     # Input layers
     sequence_input = Input(shape=(sequence_length, input_nucleotide_dim), name='sequence_input')
     expression_input = Input(shape=(sequence_length, expression_dim), name='expression_input')
@@ -96,7 +105,7 @@ def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleot
     lstm_dense = Dense(output_nucleotide_dim)(lstm_out)  # No softmax activation here, logits only
 
     # Apply temperature-scaled softmax using Lambda
-    softmax_output = Lambda(custom_copy_temperature_scaled_softmax_elements)([lstm_dense, temperature_tensor])
+    softmax_output = Lambda(custom_copy_argmax_STE)([lstm_dense])
 
     # Apply masking based on your custom logic
     masked_output = Lambda(custom_copy_masked_elements)([sequence_input, softmax_output])

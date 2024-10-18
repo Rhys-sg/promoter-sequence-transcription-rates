@@ -89,9 +89,8 @@ def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleot
     # Masked output based on custom logic
     masked_output = Lambda(custom_copy_masked_elements)([sequence_input, lstm_dense_output])
 
-    # Convert the masked output to one-hot encoded boolean values
-    onehot_output = Lambda(lambda x: tf.round(x))(masked_output)
-    model = Model(inputs=[sequence_input, expression_input], outputs=onehot_output)
+    # Model for training (using softmax output)
+    model = Model(inputs=[sequence_input, expression_input], outputs=masked_output)
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
     return model
@@ -146,23 +145,6 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_
     return loss_history
 
 def loss_func(predicted_sequence, X_expressions_batch, y_train, cnn_model):
-    """
-    Custom loss function to calculate the MSE between the predicted expression and the true expression.
-    It is based on "Expression Consistency Loss," which ensures that the generated DNA sequence has a
-    similar expression to the given sequence expression using mean squared error.
-
-    Implementation:
-      1) If the predicted sequence is equal to the true sequence, the loss is 0.
-      2) Otherwise, the predicted sequence is passed through the CNN model to get the predicted expression.
-      3) The loss is then calculated as the MSE between the true expression and the predicted expression.
-    
-    This function does NOT include
-      1) GAN Adversarial Loss: A binary cross-entropy loss used to train the discriminator to differentiate
-         between real and generated sequences.
-      2) Deviation Loss: A loss that penalizes the deviation of the generated sequence from the unmasked
-         sections of the input sequence.
-
-    """
     if predicted_sequence == y_train:
         return 0
     predicted_expression = cnn_model(predicted_sequence)
@@ -182,9 +164,9 @@ def predict_with_lstm(lstm_model, sequence, expression, scaler, max_length=150):
     one_hot_encoded_sequence = np.array([one_hot_encode_input(apply_padding(sequence, max_length))])
     normalized_expression = scaler.transform([[expression]])
     normalized_expression = np.repeat(normalized_expression, max_length, axis=1)
-    predicted_sequence = lstm_model.predict([one_hot_encoded_sequence, normalized_expression])
+    predicted_masked_sequence = lstm_model.predict([one_hot_encoded_sequence, normalized_expression])
     
-    return onehot_decode_output(predicted_sequence)
+    return onehot_decode_output(predicted_masked_sequence)
 
 def onehot_decode_output(sequence):
     mapping = {(1, 0, 0, 0): 'A',

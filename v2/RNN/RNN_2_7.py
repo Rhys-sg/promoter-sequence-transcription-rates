@@ -82,7 +82,7 @@ def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleot
 
     return model
 
-def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_train, batch_size=512, epochs=1, learning_rate=0.01):
+def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_train, batch_size=512, epochs=50, learning_rate=0.01):
     
     # Freeze CNN model layers and Ensure LSTM model layers are trainable
     for layer in cnn_model.layers:
@@ -108,7 +108,7 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_
 
         # Process data in batches
         for i in range(0, len(X_sequence_train), batch_size):
-            
+                        
             # Select batch data
             X_sequence_batch = X_sequence_train[i:i + batch_size]
             X_expressions_batch = X_expressions_train[i:i + batch_size]
@@ -116,52 +116,49 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_
 
             with tf.GradientTape() as tape:
                 predicted_sequence = lstm_model([X_sequence_batch, X_expressions_batch])
-                loss_total = loss_func(predicted_sequence, X_expressions_batch, y_batch, cnn_model)
+                loss_total = loss_func(predicted_sequence, X_sequence_batch, X_expressions_batch, y_batch, cnn_model)
 
             # Calculate gradients only for the LSTM model
             gradients = tape.gradient(loss_total, lstm_model.trainable_variables)
             optimizer.apply_gradients(zip(gradients, lstm_model.trainable_variables))
-        
-        loss_history.append(loss_total.numpy())
 
-        print(f'Epoch {epoch + 1}, Sequence {i}/{len(X_sequence_train)} - Loss: {loss_total.numpy()}')
+            print(f'Epoch {epoch + 1}, batch {i // batch_size + 1} / {len(X_sequence_train) // batch_size + 1}, loss: {loss_total.numpy()}')
+        
+            loss_history.append(loss_total.numpy())
 
     return loss_history
 
-def loss_func(predicted_sequences_batch, X_expressions_batch, y_train, cnn_model, weighted_mask = 0.5, weight_one_hot=0.000005, weight_expression=30):
+def loss_func(predicted_sequences, X_sequence_batch, X_expressions, y_train, cnn_model, weighted_mask = 0.5, weight_one_hot=0, weight_expression=30):
 
     # Get one-hot encoded sequences
-    one_hot_batch_len_5, one_hot_batch_len_4 = get_argmax_STE_one_hot(predicted_sequences_batch)
+    one_hot_sequences_len_5, one_hot_sequences_len_4 = get_argmax_STE_one_hot(predicted_sequences)
 
     # Calculate each loss component individually, apply weights
-    weighted_mask_loss = weighted_mask * tf.reduce_mean(loss_func_mask_deviation(predicted_sequences_batch, y_train))
-    weighted_one_hot_loss = weight_one_hot * tf.reduce_mean(loss_func_one_hot_deviation(predicted_sequences_batch, one_hot_batch_len_5))
-    weighted_expression_loss = weight_expression * tf.reduce_mean(loss_func_cnn(cnn_model, one_hot_batch_len_4, X_expressions_batch))
+    weighted_mask_loss = weighted_mask * tf.reduce_mean(loss_func_mask_deviation(predicted_sequences, X_sequence_batch))
+    weighted_one_hot_loss = weight_one_hot * tf.reduce_mean(loss_func_one_hot_deviation(predicted_sequences, one_hot_sequences_len_5))
+    weighted_expression_loss = weight_expression * tf.reduce_mean(loss_func_cnn(cnn_model, one_hot_sequences_len_4, X_expressions))
     
-    print(f'Weighted Mask Loss: {weighted_mask_loss.numpy()}')
-    print(f'Weighted One-Hot Loss: {weighted_one_hot_loss.numpy()}')
-    print(f'Weighted Expression Loss: {weighted_expression_loss.numpy()}')
+    # print(f'Weighted Mask Loss: {weighted_mask_loss.numpy()}')
+    # print(f'Weighted One-Hot Loss: {weighted_one_hot_loss.numpy()}')
+    # print(f'Weighted Expression Loss: {weighted_expression_loss.numpy()}')
 
     return weighted_mask_loss + weighted_one_hot_loss + weighted_expression_loss
 
 import tensorflow as tf
 
-def loss_func_mask_deviation(predicted_sequences_batch, y_train_batch):
+def loss_func_mask_deviation(predicted_sequences, X_sequence_batch):
     """
     Custom loss function that uses categorical crossentropy but ignores masked elements.
     Masked elements are represented by the placeholder '_', which is encoded as [0, 0, 0, 0, 0].
     """
-    y_train_batch = tf.cast(y_train_batch, dtype=tf.float32)
-
-    mask = tf.reduce_any(tf.not_equal(y_train_batch, [0, 0, 0, 0, 0]), axis=-1)
-
-    loss = tf.keras.losses.categorical_crossentropy(y_train_batch, predicted_sequences_batch)
+    mask = tf.reduce_any(tf.not_equal(X_sequence_batch, [0, 0, 0, 0, 0]), axis=-1)
+    loss = tf.keras.losses.categorical_crossentropy(X_sequence_batch, predicted_sequences)
     loss = tf.boolean_mask(loss, mask)
 
     return tf.reduce_mean(loss)
 
 
-def loss_func_one_hot_deviation(predicted_sequences_batch, one_hot_batch):
+def loss_func_one_hot_deviation(predicted_sequences, one_hot_sequences):
     """
     This uses Categorical Crossentropy Loss to calculate the distance between the predicted 
     and the one-hot encoded predicted sequences.
@@ -172,17 +169,17 @@ def loss_func_one_hot_deviation(predicted_sequences_batch, one_hot_batch):
     3. Mean Squared Error (MSE) Loss
 
     """
-    return tf.keras.losses.categorical_crossentropy(predicted_sequences_batch, one_hot_batch)
+    return tf.keras.losses.categorical_crossentropy(predicted_sequences, one_hot_sequences)
 
-def loss_func_cnn(cnn_model, one_hot_batch_len_4, X_expressions_batch):
+def loss_func_cnn(cnn_model, one_hot_sequences_len_4, X_expressions):
     """
     Predict the expression from the LSTM-predicted sequence and calculate the mean squared error
 
     """
-    predicted_expression = cnn_model(one_hot_batch_len_4)
-    return tf.reduce_mean(tf.square(X_expressions_batch - predicted_expression))
+    predicted_expression = cnn_model(one_hot_sequences_len_4)
+    return tf.reduce_mean(tf.square(X_expressions - predicted_expression))
 
-def get_argmax_STE_one_hot(predicted_sequences_batch):
+def get_argmax_STE_one_hot(predicted_sequences):
     """
     Returns the one-hot encoded version of the argmax of the softmax output:
 
@@ -195,18 +192,18 @@ def get_argmax_STE_one_hot(predicted_sequences_batch):
     It is redundant, but usefull argmax in the LSTM.
 
     """
-    one_hot_batch_len_5 = tf.one_hot(tf.argmax(tf.nn.softmax(predicted_sequences_batch), axis=-1), depth=tf.shape(predicted_sequences_batch)[-1])
-    one_hot_batch_len_4 = np.delete(one_hot_batch_len_5, -1, axis=-1)
+    one_hot_sequences_len_5 = tf.one_hot(tf.argmax(tf.nn.softmax(predicted_sequences), axis=-1), depth=tf.shape(predicted_sequences)[-1])
+    one_hot_sequences_len_4 = np.delete(one_hot_sequences_len_5, -1, axis=-1)
 
-    return one_hot_batch_len_5, one_hot_batch_len_4
+    return one_hot_sequences_len_5, one_hot_sequences_len_4
 
 
 def evaluate_model(lstm_model, cnn_model, X_sequence_test, X_expressions_test):
     X_expressions_test = np.expand_dims(X_expressions_test, axis=-1)
     X_expressions_test = np.repeat(X_expressions_test, X_sequence_test.shape[1], axis=1)
     predicted_sequence = lstm_model.predict([X_sequence_test, X_expressions_test])
-    one_hot_batch_len_5, one_hot_batch_len_4 = get_argmax_STE_one_hot(predicted_sequence)
-    predicted_expression = cnn_model.predict(one_hot_batch_len_4)
+    one_hot_sequences_len_5, one_hot_sequences_len_4 = get_argmax_STE_one_hot(predicted_sequence)
+    predicted_expression = cnn_model.predict(one_hot_sequences_len_4)
     mse = tf.reduce_mean(tf.square(X_expressions_test - predicted_expression)).numpy()
     
     return mse, predicted_expression
@@ -229,10 +226,10 @@ def one_hot_decode_output(sequence):
                (0, 0, 0, 1): 'G',
                (0, 0, 0, 0): ''}  # Placeholder for padding
     
-    one_hot_batch_len_5, one_hot_batch_len_4 = get_argmax_STE_one_hot(sequence)
+    one_hot_sequences_len_5, one_hot_sequences_len_4 = get_argmax_STE_one_hot(sequence)
     
     # Ensure the output is 2D and we iterate over the actual one-hot encoded nucleotides
-    return ''.join([mapping[tuple(nucleotide)] for nucleotide in np.squeeze(one_hot_batch_len_4)])
+    return ''.join([mapping[tuple(nucleotide)] for nucleotide in np.squeeze(one_hot_sequences_len_4)])
 
 
 if __name__ == '__main__':

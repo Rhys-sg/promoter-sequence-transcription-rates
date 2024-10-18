@@ -68,15 +68,18 @@ def one_hot_encode_output(sequence):
 
 # Register the custom masking function
 @keras.saving.register_keras_serializable(package="Custom", name="custom_copy_masked_elements")
-def custom_copy_masked_elements(sequence_input, lstm_output):
+def custom_copy_masked_elements(args):
+    sequence_input, lstm_output = args
     mask = tf.constant([0, 0, 0, 0, 0], dtype=tf.float32)
     is_masked = tf.reduce_all(tf.equal(sequence_input, mask), axis=-1, keepdims=True)
     output = tf.where(is_masked, lstm_output, sequence_input[..., :4])
+    
     return output
 
 # Register the custom temperature-scaled softmax function
 @keras.saving.register_keras_serializable(package="Custom", name="custom_copy_temperature_scaled_softmax_elements")
-def custom_copy_temperature_scaled_softmax_elements(logits, temperature):
+def custom_copy_temperature_scaled_softmax_elements(args):
+    logits, temperature = args
     return tf.nn.softmax(logits / temperature)
 
 def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleotide_dim=4, expression_dim=1, temperature=0.5):
@@ -92,11 +95,11 @@ def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleot
     lstm_out = LSTM(128, return_sequences=True)(combined_input)
     lstm_dense = Dense(output_nucleotide_dim)(lstm_out)  # No softmax activation here, logits only
 
-    # Step 1: Apply temperature-scaled softmax using Lambda
-    softmax_output = Lambda(lambda x: custom_copy_temperature_scaled_softmax_elements(x[0], temperature_tensor))([lstm_dense])
+    # Apply temperature-scaled softmax using Lambda
+    softmax_output = Lambda(custom_copy_temperature_scaled_softmax_elements)([lstm_dense, temperature_tensor])
 
-    # Step 2: Apply masking based on your custom logic
-    masked_output = Lambda(lambda x: custom_copy_masked_elements(x[0], x[1]))([sequence_input, softmax_output])
+    # Apply masking based on your custom logic
+    masked_output = Lambda(custom_copy_masked_elements)([sequence_input, softmax_output])
 
     # Build and compile the model
     model = Model(inputs=[sequence_input, expression_input], outputs=masked_output)
@@ -155,10 +158,8 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_
 def loss_func(predicted_sequence, X_expressions_batch, y_train, cnn_model):
     if predicted_sequence == y_train:
         return 0
-    predicted_LSTM_expression = cnn_model(predicted_sequence)
-    predicted_y_expression = cnn_model(y_train)
-    return tf.reduce_mean(tf.square(predicted_LSTM_expression - predicted_y_expression))
-
+    predicted_expression = cnn_model(predicted_sequence)
+    return tf.reduce_mean(tf.square(X_expressions_batch - predicted_expression))
 
 def evaluate_model(lstm_model, cnn_model, X_sequence_test, X_expressions_test):
     X_expressions_test = np.expand_dims(X_expressions_test, axis=-1)
@@ -169,11 +170,14 @@ def evaluate_model(lstm_model, cnn_model, X_sequence_test, X_expressions_test):
     
     return mse, predicted_expression
 
-def predict_with_lstm(lstm_model, sequence, expression, scaler, max_length=150):
+def predict_with_lstm(lstm_model, sequence, expression, scaler, max_length=150, decode_output=True):
     one_hot_encoded_sequence = np.array([one_hot_encode_input(apply_padding(sequence, max_length))])
     normalized_expression = scaler.transform([[expression]])
     normalized_expression = np.repeat(normalized_expression, max_length, axis=1)
     predicted_masked_sequence = lstm_model.predict([one_hot_encoded_sequence, normalized_expression])
+
+    if not decode_output:
+        return predicted_masked_sequence
     
     return onehot_decode_output(predicted_masked_sequence)
 

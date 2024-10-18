@@ -95,7 +95,7 @@ def build_lstm_model(sequence_length=150, input_nucleotide_dim=5, output_nucleot
 
     return model
 
-def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_train, batch_size, epochs=10, learning_rate=0.01):
+def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_train, batch_size=512, epochs=1, learning_rate=0.01):
     
     # Freeze CNN model layers and Ensure LSTM model layers are trainable
     for layer in cnn_model.layers:
@@ -122,8 +122,7 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_
 
         # Process data in batches
         for i in range(0, len(X_sequence_train), batch_size):
-            print('\r')
-            print(f'Epoch {epoch + 1}, Sequence {i}/{len(X_sequence_train)}', end='\r')
+            print(f'Epoch {epoch + 1}, Sequence {i}/{len(X_sequence_train)}')
 
             # Select batch data
             X_sequence_batch = X_sequence_train[i:i + batch_size]
@@ -132,28 +131,34 @@ def train_model(lstm_model, cnn_model, X_sequence_train, X_expressions_train, y_
 
             with tf.GradientTape() as tape:
                 predicted_sequence = lstm_model([X_sequence_batch, X_expressions_batch])
-                loss = loss_func(predicted_sequence, X_expressions_batch, y_batch, cnn_model)
+                loss_total = loss_func(predicted_sequence, X_expressions_batch, y_batch, cnn_model)
 
             # Calculate gradients only for the LSTM model
-            gradients = tape.gradient(loss, lstm_model.trainable_variables)
+            gradients = tape.gradient(loss_total, lstm_model.trainable_variables)
             optimizer.apply_gradients(zip(gradients, lstm_model.trainable_variables))
         
-        loss_history.append(loss.numpy())
+        loss_history.append(loss_total.numpy())
 
     return loss_history
 
-def loss_func(predicted_sequences_batch, X_expressions_batch, y_train, cnn_model):
+def loss_func(predicted_sequences_batch, X_expressions_batch, y_train, cnn_model, weight_one_hot=0.000005, weight_expression=30):
 
+    # Get one-hot encoded sequences
     one_hot_batch_len_5, one_hot_batch_len_4 = get_argmax_STE_one_hot(predicted_sequences_batch)
-    loss_one_hot = loss_func_one_hot_deviation(predicted_sequences_batch, one_hot_batch_len_5)
-    loss_expression = loss_func_cnn(cnn_model, one_hot_batch_len_4, X_expressions_batch)
 
-    return tf.reduce_mean(loss_one_hot) + tf.reduce_mean(loss_expression)
+    # Calculate each loss component individually, apply weights
+    weighted_one_hot_loss = weight_one_hot * tf.reduce_mean(loss_func_one_hot_deviation(predicted_sequences_batch, one_hot_batch_len_5))
+    weighted_expression_loss = weight_expression * tf.reduce_mean(loss_func_cnn(cnn_model, one_hot_batch_len_4, X_expressions_batch))
+    
+    print(f'Weighted One-Hot Loss: {weighted_one_hot_loss.numpy()}')
+    print(f'Weighted Expression Loss: {weighted_expression_loss.numpy()}')
+
+    return weighted_one_hot_loss + weighted_expression_loss
 
 def loss_func_one_hot_deviation(predicted_sequences_batch, one_hot_batch):
     """
-    This uses Categorical Crossentropy Loss to calculate the error between the one-hot
-    encoded predicted sequences and the one-hot encoded actual sequences.
+    This uses Categorical Crossentropy Loss to calculate the distance between the predicted 
+    and the one-hot encoded predicted sequences.
 
     Alternatively, we can use:
     1. Kullback-Leibler Divergence (KL Divergence) Loss

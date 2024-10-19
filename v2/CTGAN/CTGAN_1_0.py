@@ -8,7 +8,24 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 
-def load_and_preprocess_data(file_path):
+def load_and_preprocess_data(file_path, batch_size):
+    df, scaler = load_data(file_path)
+
+    X_sequence, X_expressions, y = preprocess_X_y(df)
+
+    X_sequence_train, X_sequence_test, X_expressions_train, X_expressions_test, y_train, y_test = train_test_split(
+        X_sequence, X_expressions, y, test_size=0.2, random_state=42)
+
+    # Convert data to PyTorch Tensors
+    X_sequence_train = torch.Tensor(X_sequence_train)
+    X_expressions_train = torch.Tensor(X_expressions_train).unsqueeze(1)
+    y_train = torch.Tensor(y_train)
+
+    # Create dataset and dataloader
+    dataset = TensorDataset(X_sequence_train, X_expressions_train)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+def load_data(file_path):
     df = pd.read_csv(file_path)
     scaler = MinMaxScaler()
     df['Normalized Observed log(TX/Txref)'] = scaler.fit_transform(df[['Observed log(TX/Txref)']])
@@ -103,12 +120,15 @@ class Discriminator(nn.Module):
         x = torch.relu(self.fc3(x))
         x = torch.sigmoid(self.fc4(x))
         return x
+    
+def initialize_device():
+    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Function to initialize models
-def initialize_models(sequence_length, latent_dim, expression_dim):
+def initialize_models(sequence_length, latent_dim, expression_dim, device):
     generator = Generator(sequence_length, latent_dim, expression_dim)
     discriminator = Discriminator(sequence_length, expression_dim)
-    return generator, discriminator
+    return generator.to(device), discriminator.to(device)
 
 # Training the CTGAN
 def train_ctgan(generator, discriminator, dataloader, num_epochs=100, latent_dim=100, expression_dim=1, lr=0.0002, device='cpu'):
@@ -155,51 +175,73 @@ def train_ctgan(generator, discriminator, dataloader, num_epochs=100, latent_dim
 
         print(f"Epoch [{epoch+1}/{num_epochs}] | D Loss: {d_loss.item():.4f} | G Loss: {g_loss.item():.4f}")
 
+def save_model(model, file_path):
+    torch.save(model.state_dict(), file_path)
+
+def load_model(model, file_path):
+    model.load_state_dict(torch.load(file_path))
+    model.eval()
+
 # Evaluating the Generator (Sampling and comparing with real sequences)
 def evaluate_generator(generator, real_expressions, latent_dim=100, device='cpu'):
     generator.eval()
-    noise = torch.randn(real_expressions.size(0), latent_dim).to(device)
-    generated_sequences = generator(noise, real_expressions.to(device))
+
+    # Convert the list of expressions to a tensor
+    real_expressions_tensor = torch.tensor(real_expressions).float().to(device).unsqueeze(1)
+
+    noise = torch.randn(real_expressions_tensor.size(0), latent_dim).to(device)
+    generated_sequences = generator(noise, real_expressions_tensor)
     return generated_sequences
+
+def decode_one_hot_sequences(one_hot_sequences):
+    nucleotide_mapping = {
+        (1, 0, 0, 0): 'A',
+        (0, 1, 0, 0): 'T',
+        (0, 0, 1, 0): 'C',
+        (0, 0, 0, 1): 'G',
+        (0, 0, 0, 0): '',  # Padding
+    }
+    sequences = []
+    for one_hot_sequence in one_hot_sequences:
+        # Detach the tensor and convert to NumPy, then round
+        rounded_sequence = np.round(one_hot_sequence.detach().numpy()).astype(int)
+        decoded_sequence = ''.join(nucleotide_mapping.get(tuple(nucleotide), '') for nucleotide in rounded_sequence)
+        sequences.append(decoded_sequence)
+    return sequences
 
 if __name__ == '__main__':
     # Hyperparameters
-    sequence_length = 150  # Example sequence length
+    sequence_length = 150
     latent_dim = 100
-    expression_dim = 1  # Only one expression value per sequence
+    expression_dim = 1
     batch_size = 64
     num_epochs = 100
     lr = 0.0002
-        
-    print('Loading and preprocessing data...')
+
+    # Load and preprocess data
     file_path = 'v2/Data/combined/LaFleur_supp.csv'
-    df, scaler = load_and_preprocess_data(file_path)
-
-    print('Preparing training and test data...')
-    X_sequence, X_expressions, y = preprocess_X_y(df)
-
-    print(X_sequence.shape, X_expressions.shape, y.shape)
-    X_sequence_train, X_sequence_test, X_expressions_train, X_expressions_test, y_train, y_test = train_test_split(
-        X_sequence, X_expressions, y, test_size=0.2, random_state=42)
-
-    # Convert data to PyTorch Tensors
-    X_sequence_train = torch.Tensor(X_sequence_train)
-    X_expressions_train = torch.Tensor(X_expressions_train).unsqueeze(1)  # Make sure expressions are 2D
-    y_train = torch.Tensor(y_train)
-
-    # Create dataset and dataloader
-    dataset = TensorDataset(X_sequence_train, X_expressions_train)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = load_and_preprocess_data(file_path, batch_size)
 
     # Initialize models
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    generator, discriminator = initialize_models(sequence_length, latent_dim, expression_dim)
-    generator = generator.to(device)
-    discriminator = discriminator.to(device)
+    device = initialize_device()
+    generator, discriminator = initialize_models(sequence_length, latent_dim, expression_dim, device)
 
     # Train the CTGAN
     train_ctgan(generator, discriminator, dataloader, num_epochs=num_epochs, latent_dim=latent_dim, expression_dim=expression_dim, lr=lr, device=device)
 
+    # Save the trained models
+    save_model(generator, 'generator.pth')
+    save_model(discriminator, 'discriminator.pth')
+
+    # Load the models
+    load_model(generator, 'generator.pth')
+    load_model(discriminator, 'discriminator.pth')
+
+    # Values to evaluate the Generator
+    sequences = ['TTTTCTATCTACGTACTTGACACTATTTC______________ATT__________ACCTTAGTTTGTACGTT']
+    expressions = [0.5]
+
     # Evaluate the Generator
-    generated_sequences = evaluate_generator(generator, X_expressions_train[:10], latent_dim=latent_dim, device=device)
+    generated_sequences = evaluate_generator(generator, expressions, latent_dim=latent_dim, device=device)
     print("Generated Sequences: ", generated_sequences)
+    print("Decoded Sequences: ", decode_one_hot_sequences(generated_sequences))

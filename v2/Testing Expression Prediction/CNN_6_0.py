@@ -4,8 +4,8 @@ from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential, load_model # type: ignore
 from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense # type: ignore
 from keras.optimizers import Adam # type: ignore
-import seaborn as sns
-import matplotlib.pyplot as plt
+from keras.callbacks import EarlyStopping # type: ignore
+from sklearn.metrics import mean_squared_error, root_mean_squared_error, mean_absolute_error, r2_score
 
 def load_features(file_path):
     df = pd.read_csv(file_path)
@@ -14,13 +14,11 @@ def load_features(file_path):
     return X, y
 
 def preprocess_sequences(X, max_length=150):
-    padded_sequences = [padded_one_hot_encode('0' * (max_length - len(seq)) + seq) for seq in X]
-    return np.array(padded_sequences)
+    return np.array([padded_one_hot_encode(seq.zfill(max_length)) for seq in X])
 
 def padded_one_hot_encode(sequence):
     mapping = {'A': [1,0,0,0], 'C': [0,1,0,0], 'G': [0,0,1,0], 'T': [0,0,0,1], '0': [0,0,0,0]}
-    encoding = [mapping[nucleotide.upper()] for nucleotide in sequence]
-    return encoding
+    return np.array([mapping[nucleotide.upper()] for nucleotide in sequence])
 
 def build_cnn_model(input_shape):
     model = Sequential()
@@ -35,8 +33,11 @@ def build_cnn_model(input_shape):
     return model
 
 def train_model(model, X_train, y_train, X_test, y_test, epochs=150, batch_size=32):
-    history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_test, y_test))
+    early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+    history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, 
+                        validation_data=(X_test, y_test), callbacks=[early_stop])
     return history
+
 
 def load_and_predict(model_path, X):
     model = load_model(model_path)
@@ -44,18 +45,20 @@ def load_and_predict(model_path, X):
     return pd.DataFrame(predictions_array, columns=['Value'])
 
 def calc_metrics(y_test, y_pred):
-    mse = np.mean((y_test - y_pred) ** 2)
-    rmse = np.sqrt(mse)
-    mae = np.mean(np.abs(y_test - y_pred))
-    r2 = 1 - mse / np.var(y_test)
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = root_mean_squared_error(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
     return mse, rmse, mae, r2
 
 if __name__ == "__main__":
-    model_path = '../Models/CNN_6_0.keras'
-    X_train, y_train = load_features('../Data/Train Test/train_data.csv')
-    X_test, y_test = load_features('../Data/Train Test/test_data.csv')
+
+    model_path = 'v2/Models/CNN_6_0.keras'
+    X_train, y_train = load_features('v2/Data/Train Test/train_data.csv')
+    X_test, y_test = load_features('v2/Data/Train Test/test_data.csv')
+
     model = build_cnn_model(X_train.shape[1:])
-    history = train_model(model, X_train, y_train, X_test, y_test)
+    history = train_model(model, X_train, y_train, X_test, y_test, epochs=2, batch_size=32)
 
     model.save(model_path)
     y_pred = load_and_predict(model_path, X_test)

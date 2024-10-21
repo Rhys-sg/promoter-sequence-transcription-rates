@@ -11,17 +11,18 @@ from torch.utils.data import DataLoader, TensorDataset
 def load_and_preprocess_data(file_path, batch_size):
     df, scaler = load_data(file_path)
 
-    X_sequence, X_expressions, X_start_idx, X_len_removed, y = preprocess_X_y(df)
+    X_sequence, X_expressions, y = preprocess_X_y(df)
+
+    X_sequence_train, X_sequence_test, X_expressions_train, X_expressions_test, y_train, y_test = train_test_split(
+        X_sequence, X_expressions, y, test_size=0.2, random_state=42)
 
     # Convert data to PyTorch Tensors
-    X_sequence = torch.Tensor(X_sequence)
-    X_expressions = torch.Tensor(X_expressions).unsqueeze(1)
-    X_start_idx = torch.Tensor(X_start_idx).unsqueeze(1)
-    X_len_removed = torch.Tensor(X_len_removed).unsqueeze(1)
-    y = torch.Tensor(y)
+    X_sequence_train = torch.Tensor(X_sequence_train)
+    X_expressions_train = torch.Tensor(X_expressions_train).unsqueeze(1)
+    y_train = torch.Tensor(y_train)
 
     # Create dataset and dataloader
-    dataset = TensorDataset(X_sequence, X_expressions, X_start_idx, X_len_removed, y)
+    dataset = TensorDataset(X_sequence_train, X_expressions_train)
     return DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 def load_data(file_path):
@@ -35,34 +36,30 @@ def combine_columns(df):
     y = df['Normalized Observed log(TX/Txref)']
     return X, y
 
-def preprocess_X_y(df, num_augmentations=1, min_length=1, max_length=10):
+def preprocess_X_y(df, num_augmentations=1):
     sequences, expressions = combine_columns(df)
 
     X_sequence = []
     X_expressions = []
     y = []
-    X_start_idx = []
-    X_len_removed = []
 
     for full_sequence, expression in zip(sequences, expressions):
         for _ in range(num_augmentations):
-            len_removed = random.randint(min_length, max_length)
-            masked_sequence, missing_element, start_idx = remove_section_get_features(full_sequence, len_removed)
+            len_removed = random.randint(1, 10)
+            masked_sequence, missing_element = remove_section_get_features(full_sequence, len_removed)
 
             X_sequence.append(one_hot_encode_input(apply_padding(masked_sequence, 150)))
             X_expressions.append(expression)
-            X_start_idx.append(start_idx)
-            X_len_removed.append(len_removed)
-            y.append(one_hot_encode_output(missing_element))
+            y.append(one_hot_encode_output(apply_padding(full_sequence, 150)))
 
-    return np.array(X_sequence), np.array(X_expressions), np.array(X_start_idx), np.array(X_len_removed), np.array(y)
+    return np.array(X_sequence), np.array(X_expressions), np.array(y)
 
 def remove_section_get_features(sequence, section_length):
     seq_length = len(sequence)
     start_idx = random.randint(0, seq_length - section_length)
     missing_element = sequence[start_idx:start_idx + section_length]
     masked_sequence = sequence[:start_idx] + 'N' * section_length + sequence[start_idx + section_length:]
-    return masked_sequence, missing_element, start_idx
+    return masked_sequence, missing_element
 
 def apply_padding(sequence, max_length):
     return '0' * (max_length - len(sequence)) + sequence
@@ -73,7 +70,7 @@ def one_hot_encode_input(sequence):
         'T': [0, 1, 0, 0],
         'C': [0, 0, 1, 0],
         'G': [0, 0, 0, 1],
-        'N': [0.25, 0.25, 0.25, 0.25],  # Ambiguous nucleotide
+        'N': [0.25, 0.25, 0.25, 0.25],  # Ambiguous nucleotide, equal contribution from all
         '0': [0, 0, 0, 0]  # Padding
     }
     return [mapping[nucleotide.upper()] for nucleotide in sequence]
@@ -88,17 +85,23 @@ def one_hot_encode_output(sequence):
     return [mapping[nucleotide.upper()] for nucleotide in sequence]
 
 # Define CTGAN components (Generator and Discriminator)
+
 class Generator(nn.Module):
     def __init__(self, sequence_length, latent_dim, expression_dim):
         super(Generator, self).__init__()
-        self.lstm = nn.LSTM(input_size=latent_dim + expression_dim, hidden_size=128, num_layers=2, batch_first=True)
-        self.fc = nn.Linear(128, 4)
-    
-    def forward(self, noise, expression, output_length):
-        input_data = torch.cat([noise.unsqueeze(1), expression.unsqueeze(1)], dim=2)
-        out, _ = self.lstm(input_data)
-        out = self.fc(out[:, -output_length:, :]) # Dynamic sequence length
-        return out
+        self.fc1 = nn.Linear(latent_dim + expression_dim, 128)
+        self.fc2 = nn.Linear(128, 256)
+        self.fc3 = nn.Linear(256, 512)
+        self.fc4 = nn.Linear(512, sequence_length * 4)  # Output size is one-hot encoded sequence (A, T, C, G)
+
+    def forward(self, noise, expression):
+        x = torch.cat([noise, expression], dim=1)
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
+        x = torch.relu(self.fc3(x))
+        x = torch.tanh(self.fc4(x))
+        x = x.view(x.size(0), -1, 4)  # Reshape to (batch_size, sequence_length, 4)
+        return x
 
 
 class Discriminator(nn.Module):
@@ -117,7 +120,7 @@ class Discriminator(nn.Module):
         x = torch.relu(self.fc3(x))
         x = torch.sigmoid(self.fc4(x))
         return x
-
+    
 def initialize_device():
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -126,17 +129,6 @@ def initialize_models(sequence_length, latent_dim, expression_dim, device):
     generator = Generator(sequence_length, latent_dim, expression_dim)
     discriminator = Discriminator(sequence_length, expression_dim)
     return generator.to(device), discriminator.to(device)
-
-# Function to insert the predicted sequence into the masked sequence
-def insert_predicted_sequence(masked_sequence, predicted_sequence, start_index, length):
-    predicted_sequence_str = decode_one_hot_sequences(predicted_sequence)[0]
-
-    completed_sequence = (
-        masked_sequence[:start_index] +
-        predicted_sequence_str +
-        masked_sequence[start_index + length:]
-    )
-    return completed_sequence
 
 # Training the CTGAN
 def train_ctgan(generator, discriminator, dataloader, num_epochs=100, latent_dim=100, expression_dim=1, lr=0.0002, device='cpu'):
@@ -149,51 +141,39 @@ def train_ctgan(generator, discriminator, dataloader, num_epochs=100, latent_dim
     discriminator.train()
 
     for epoch in range(num_epochs):
-        for i, (real_sequences, real_expressions, real_start_idx, real_len_removed, real_y) in enumerate(dataloader):
+        for i, (real_sequences, real_expressions) in enumerate(dataloader):
             batch_size = real_sequences.size(0)
-
+            
             real_sequences = real_sequences.to(device)
             real_expressions = real_expressions.to(device)
 
-            for j in range(batch_size):
-                masked_sequence = real_sequences[j]
-                start_index = real_start_idx[j]
-                length = real_len_removed[j]
+            # Train Discriminator
+            noise = torch.randn(batch_size, latent_dim).to(device)
+            fake_sequences = generator(noise, real_expressions)
 
-                # Generate noise and predict the missing sequence
-                noise = torch.randn(1, latent_dim).to(device)  # Generate noise for one sample
-                predicted_missing_sequence = generator(noise, real_expressions[j:j+1])
+            real_labels = torch.ones(batch_size, 1).to(device)
+            fake_labels = torch.zeros(batch_size, 1).to(device)
 
-                # Insert the predicted sequence into the masked sequence
-                completed_sequence = insert_predicted_sequence(masked_sequence, predicted_missing_sequence, start_index, length)
+            real_predictions = discriminator(real_sequences, real_expressions)
+            fake_predictions = discriminator(fake_sequences.detach(), real_expressions)
 
-                # Convert completed_sequence to tensor for the discriminator
-                completed_sequence_tensor = one_hot_encode_input(completed_sequence).to(device)
+            d_loss_real = criterion(real_predictions, real_labels)
+            d_loss_fake = criterion(fake_predictions, fake_labels)
+            d_loss = (d_loss_real + d_loss_fake) / 2
 
-                # Train Discriminator
-                real_labels = torch.ones(1, 1).to(device)
-                fake_labels = torch.zeros(1, 1).to(device)
+            d_optimizer.zero_grad()
+            d_loss.backward()
+            d_optimizer.step()
 
-                real_prediction = discriminator(completed_sequence_tensor.unsqueeze(0), real_expressions[j:j+1])
-                fake_prediction = discriminator(predicted_missing_sequence.detach(), real_expressions[j:j+1])
+            # Train Generator
+            fake_predictions = discriminator(fake_sequences, real_expressions)
+            g_loss = criterion(fake_predictions, real_labels)
 
-                d_loss_real = criterion(real_prediction, real_labels)
-                d_loss_fake = criterion(fake_prediction, fake_labels)
-                d_loss = (d_loss_real + d_loss_fake) / 2
+            g_optimizer.zero_grad()
+            g_loss.backward()
+            g_optimizer.step()
 
-                d_optimizer.zero_grad()
-                d_loss.backward()
-                d_optimizer.step()
-
-                # Train Generator
-                fake_prediction = discriminator(predicted_missing_sequence, real_expressions[j:j+1])
-                g_loss = criterion(fake_prediction, real_labels)
-
-                g_optimizer.zero_grad()
-                g_loss.backward()
-                g_optimizer.step()
-
-            print(f"Epoch [{epoch+1}/{num_epochs}] | D Loss: {d_loss.item():.4f} | G Loss: {g_loss.item():.4f}")
+        print(f"Epoch [{epoch+1}/{num_epochs}] | D Loss: {d_loss.item():.4f} | G Loss: {g_loss.item():.4f}")
 
 def save_model(model, file_path):
     torch.save(model.state_dict(), file_path)
@@ -246,18 +226,22 @@ if __name__ == '__main__':
     device = initialize_device()
     generator, discriminator = initialize_models(sequence_length, latent_dim, expression_dim, device)
 
-    # Train CTGAN
-    train_ctgan(generator, discriminator, dataloader, num_epochs, latent_dim, expression_dim, device=device)
+    # Train the CTGAN
+    train_ctgan(generator, discriminator, dataloader, num_epochs=num_epochs, latent_dim=latent_dim, expression_dim=expression_dim, lr=lr, device=device)
 
-    # Save models
+    # Save the trained models
     save_model(generator, 'generator.pth')
     save_model(discriminator, 'discriminator.pth')
 
-    # Evaluate generator
-    real_expressions = [row['Normalized Observed log(TX/Txref)'] for _, row in pd.read_csv(file_path).iterrows()]
-    generated_sequences = evaluate_generator(generator, real_expressions, latent_dim, device)
-    decoded_sequences = decode_one_hot_sequences(generated_sequences)
+    # Load the models
+    load_model(generator, 'generator.pth')
+    load_model(discriminator, 'discriminator.pth')
 
-    print("Generated Sequences:")
-    for seq in decoded_sequences:
-        print(seq)
+    # Values to evaluate the Generator
+    sequences = ['TTTTCTATCTACGTACTTGACACTATTTC______________ATT__________ACCTTAGTTTGTACGTT']
+    expressions = [0.5]
+
+    # Evaluate the Generator
+    generated_sequences = evaluate_generator(generator, expressions, latent_dim=latent_dim, device=device)
+    print("Generated Sequences: ", generated_sequences)
+    print("Decoded Sequences: ", decode_one_hot_sequences(generated_sequences))

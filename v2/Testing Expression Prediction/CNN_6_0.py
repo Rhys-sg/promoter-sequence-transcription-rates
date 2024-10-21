@@ -1,15 +1,19 @@
 import pandas as pd
 import numpy as np
+import torch
 from sklearn.preprocessing import MinMaxScaler
-from keras.models import Sequential, load_model # type: ignore
-from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense # type: ignore
-from keras.optimizers import Adam # type: ignore
-from keras.callbacks import EarlyStopping # type: ignore
+from keras.models import Sequential, load_model  # type: ignore
+from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense  # type: ignore
+from keras.optimizers import Adam  # type: ignore
+from keras.callbacks import EarlyStopping  # type: ignore
 from sklearn.metrics import mean_squared_error, root_mean_squared_error, mean_absolute_error, r2_score
+
+def initialize_device():
+    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def load_features(file_path):
     df = pd.read_csv(file_path)
-    y = MinMaxScaler().fit_transform(df[['Observed log(TX/Txref)']])
+    y = MinMaxScaler().fit_transform(df[['Observed log(TX/Txref)']].abs())
     X = preprocess_sequences(df[['Promoter Sequence']].astype(str).agg(''.join, axis=1))
     return X, y
 
@@ -38,7 +42,6 @@ def train_model(model, X_train, y_train, X_test, y_test, epochs=150, batch_size=
                         validation_data=(X_test, y_test), callbacks=[early_stop])
     return history
 
-
 def load_and_predict(model_path, X):
     model = load_model(model_path)
     predictions_array = model.predict(np.array(X))[:, 0]
@@ -57,6 +60,7 @@ if __name__ == "__main__":
     X_train, y_train = load_features('v2/Data/Train Test/train_data.csv')
     X_test, y_test = load_features('v2/Data/Train Test/test_data.csv')
 
+    device = initialize_device()
     model = build_cnn_model(X_train.shape[1:])
     history = train_model(model, X_train, y_train, X_test, y_test, epochs=2, batch_size=32)
 

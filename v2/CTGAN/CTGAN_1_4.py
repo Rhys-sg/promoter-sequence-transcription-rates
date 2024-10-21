@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 import random
+import keras
 
 def load_data(file_path):
     df = pd.read_csv(file_path)
@@ -86,48 +87,117 @@ class Discriminator(nn.Module):
         combined = torch.cat((y_flat, expr), dim=1)  # (batch_size, 41)
         return self.net(combined)  # Output a probability (real vs fake)
 
-def train_ctgan(generator, discriminator, dataloader, epochs, lr):
+class KerasModelWrapper(torch.nn.Module):
+    def __init__(self, path_to_cnn):
+        super(KerasModelWrapper, self).__init__()
+        self.keras_model = keras.models.load_model(path_to_cnn)
+
+    def forward(self, x, verbose=0):
+        x_np = x.detach().cpu().numpy()
+        preds = self.keras_model.predict(x_np, verbose=verbose)
+        return torch.tensor(preds).to(x.device)
+
+def train_ctgan(generator, discriminator, dataloader, cnn, epochs, lr, lambda_adversarial, lambda_cnn):
     criterion = nn.BCELoss()
     optimizer_g = torch.optim.Adam(generator.parameters(), lr=lr)
     optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=lr)
 
     for epoch in range(epochs):
-        for X, expr, y_real in dataloader:
+        for i, (X, expr, y_real) in enumerate(dataloader):
+
+            print(f"Epoch [{epoch+1}/{epochs}]  Batch [{i+1}/{len(dataloader)}]", end='\r')
+
+            batch_size = X.size(0)
+
             # Train Discriminator
             y_fake = generator(X, expr)
-            real_labels = torch.ones(X.size(0), 1)
-            fake_labels = torch.zeros(X.size(0), 1)
+            real_labels = torch.ones(batch_size, 1)
+            fake_labels = torch.zeros(batch_size, 1)
 
             optimizer_d.zero_grad()
             real_loss = criterion(discriminator(y_real, expr), real_labels)
             fake_loss = criterion(discriminator(y_fake.detach(), expr), fake_labels)
             d_loss = real_loss + fake_loss
             d_loss.backward()
-            optimizer_d.step()
+            optimizer_d.step()          
 
-            # Train Generator
+            # Train Generator with combined loss
             optimizer_g.zero_grad()
-            g_loss = criterion(discriminator(y_fake, expr), real_labels)
+            adversarial_loss = criterion(discriminator(y_fake, expr), real_labels)
+            cnn_loss = get_cnn_loss(cnn, X, y_fake, y_real, expr, batch_size)
+
+            # Combine adversarial loss and CNN loss
+            g_loss = (lambda_adversarial * adversarial_loss) + (lambda_cnn * cnn_loss)
             g_loss.backward()
             optimizer_g.step()
 
-        print(f"Epoch [{epoch+1}/{epochs}]  Loss D: {d_loss.item():.4f}, Loss G: {g_loss.item():.4f}")
+        print(f"Epoch [{epoch+1}/{epochs}]  Loss aD: {adversarial_loss.item():.4f}, Loss cD: {cnn_loss.item():.4f}, Loss G: {g_loss.item():.4f}")
 
-# Model Evaluation
-def evaluate_generator(generator, X_tensor, expr):
-    sequence = decode_tensor_to_sequence(X_tensor.squeeze(0))
-    masked_seq, target_segment = remove_section_get_features(sequence)
-    start = sequence.find('N' * len(target_segment))
-    masked_seq_tensor = one_hot_encode_sequence(masked_seq).unsqueeze(0)
-    expr_tensor = expr.view(1, 1)
-    generated_seq = generator(masked_seq_tensor, expr_tensor)
-    predicted_infill = decode_one_hot_sequence(generated_seq.argmax(dim=2).squeeze().numpy())
+def get_cnn_loss(cnn, X, y_fake, y_real, expr, batch_size):
+    mse = nn.MSELoss()
+    losses = []
 
-    reconstructed_seq = (
-        sequence[:start] + predicted_infill + sequence[start + len(target_segment):]
+    # Generate full sequences with infill and predict expression using CNN
+    for i in range(batch_size):
+
+        # Predict expression using the CNN
+        pred_gen_expr = cnn(preprocess_cnn_input(X, y_fake, i)).item()
+
+        # We should use the CNN-predicted expression for y_real here, but cuts time by half
+        pred_real_expr = expr[i].item()
+
+        # Calculate MSE loss between predicted and real expression
+        loss = mse(torch.tensor([pred_gen_expr]), torch.tensor([pred_real_expr]))
+        losses.append(loss)
+    
+    return torch.stack(losses).mean()
+
+def preprocess_cnn_input(X, y, i):
+    # Decode one-hot encoded sequences
+    segment = decode_one_hot_sequence(y[i].argmax(dim=1).numpy())
+    original_seq = decode_tensor_to_sequence(X[i])
+    masked_seq, _ = remove_section_get_features(original_seq)
+
+    # Reconstruct the full sequence by replacing masked segment with generated and real segments
+    start = masked_seq.find('N' * y.size(1))
+    infilled_seq = (
+        masked_seq[:start] + segment + masked_seq[start + len(segment):]
     )
 
-    return reconstructed_seq
+    # One-hot encode the infilled sequence for CNN prediction
+    return one_hot_encode_sequence(infilled_seq).unsqueeze(0)
+
+# Model Evaluation
+def evaluate_generator(generator, cnn, test_loader):
+    mse_loss = nn.MSELoss()
+    total_loss = 0
+    total_samples = 0
+
+    # Iterate through the test data loader
+    for X_batch, expr_batch, y_batch in test_loader:
+        batch_size = X_batch.size(0)
+
+        # Generate sequences and calculate CNN predictions
+        y_fake = generator(X_batch, expr_batch)
+
+        for i in range(batch_size):
+            # Preprocess the input for the CNN
+            cnn_input = preprocess_cnn_input(X_batch, y_fake, i)
+
+            # Predict the expression using the CNN
+            pred_expr = cnn(cnn_input).item()
+
+            # Calculate the MSE loss with the real expression
+            real_expr = expr_batch[i].item()
+            loss = mse_loss(torch.tensor([pred_expr]), torch.tensor([real_expr]))
+
+            total_loss += loss.item()
+            total_samples += 1
+
+    # Calculate and print the average MSE over the entire test set
+    avg_mse = total_loss / total_samples
+    print(f"Average MSE on Test Set: {avg_mse:.4f}")
+
 
 def decode_tensor_to_sequence(tensor):
     """Convert a one-hot encoded tensor back into a string sequence."""
@@ -153,17 +223,16 @@ def generate_infills(generator, sequences, expressions, mask_size=10):
     infilled_sequences = []
     
     for sequence, expr in zip(sequences, expressions):
-        # Locate the masked section (assumes 'N' is used for masked regions)
         start = sequence.find('N' * mask_size)
         if start == -1:
             raise ValueError("No masked region ('N') found in the sequence.")
         
         # Convert the masked sequence to a tensor
-        sequence_tensor = one_hot_encode_sequence(sequence).unsqueeze(0)  # Shape: (1, 150, 4)
-        expr_tensor = torch.tensor([expr], dtype=torch.float32).view(1, 1)  # Shape: (1, 1)
+        sequence_tensor = one_hot_encode_sequence(sequence).unsqueeze(0)
+        expr_tensor = torch.tensor([expr], dtype=torch.float32).view(1, 1)
 
         # Generate infill using the generator
-        generated_segment = generator(sequence_tensor, expr_tensor)  # Shape: (1, 10, 4)
+        generated_segment = generator(sequence_tensor, expr_tensor)
         predicted_infill = decode_one_hot_sequence(generated_segment.argmax(dim=2).squeeze().numpy())
         
         # Reconstruct the full sequence
@@ -180,17 +249,22 @@ if __name__ == '__main__':
     batch_size = 64
     epochs = 5
     learning_rate = 0.0002
+    adversarial_lambda = 1
+    cnn_lambda = 10
+    path_to_cnn = 'v2/Models/CNN_5_0.keras'
+    path_to_data = 'v2/Data/combined/LaFleur_supp.csv'
 
     # Load Data and Prepare Dataloaders
-    df = load_data('v2/Data/combined/LaFleur_supp.csv')
+    df = load_data(path_to_data)
     train_loader, test_loader = prepare_dataloader(df, batch_size)
 
     # Initialize Models
     generator = Generator()
     discriminator = Discriminator()
+    cnn = KerasModelWrapper(path_to_cnn)
 
     # Train Models with Training DataLoader
-    train_ctgan(generator, discriminator, train_loader, epochs, learning_rate)
+    train_ctgan(generator, discriminator, train_loader, cnn, epochs, learning_rate, adversarial_lambda, cnn_lambda)
 
     # Save the trained models
     save_model(generator, 'generator.pth')
@@ -200,12 +274,8 @@ if __name__ == '__main__':
     load_model(generator, 'generator.pth')
     load_model(discriminator, 'discriminator.pth')
 
-    # Evaluate with Test DataLoader
-    for X_test, expr_test, y_test in test_loader:
-        generated_seq = evaluate_generator(generator, X_test, expr_test)
-        decoded_seq = decode_one_hot_sequence(generated_seq[0].numpy())
-        print("Generated Sequence:", decoded_seq)
-
+    # Evaluate the generator on the test set
+    evaluate_generator(generator, cnn, test_loader)
     
     # Test Example
     sequences = ['TTTTCTATCTACGTACTTGACACTATTTCNNNNNNNNNNATTACCTTAGTTTGTACGTT']

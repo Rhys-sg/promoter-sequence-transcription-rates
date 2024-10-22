@@ -1,7 +1,5 @@
-import time
 import pandas as pd
 import numpy as np
-import plotly.express as px
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential, load_model  # type: ignore
 from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, BatchNormalization , Activation # type: ignore
@@ -68,13 +66,13 @@ class CNNHyperModel(HyperModel):
         )
         return model
 
-def train_best_model(name, X_train, y_train, X_test, y_test, input_shape, loss, max_trials, epochs, batch_size, hyperparam_ranges):
+def train_best_model(name, search_dir, X_train, y_train, X_test, y_test, input_shape, loss, max_trials, epochs, batch_size, hyperparam_ranges):
     tuner = RandomSearch(
         CNNHyperModel(input_shape=input_shape, loss=loss, hyperparam_ranges=hyperparam_ranges),
         objective='val_loss',
         max_trials=max_trials,
         executions_per_trial=1,
-        directory='v2/Testing Expression Prediction/Hyperparameter Search',
+        directory=search_dir,
         project_name=f'{name}_hyperparam_search'
     )
 
@@ -96,16 +94,18 @@ def load_and_predict(model_path, X):
     return pd.DataFrame(predictions_array, columns=['Value'])
 
 if __name__ == "__main__":
-
     # Documentation variables
     name = 'CNN_6_0'
+    model_path = f'v2/Models/{name}.keras'
+    data_dir = 'v2/Data/Train Test/'
+    search_dir = 'v2/Testing Expression Prediction/Hyperparameter Search'
 
     # Hyperparameter tuning variables
-    max_trials = 30
-    
+    max_trials = 3
+
     # Unoptimized training Hyperparameters
     loss = 'mean_squared_error'
-    epochs = 100
+    epochs = 2
     batch_size = 32
 
     # Hyperparameter ranges dictionary
@@ -120,26 +120,24 @@ if __name__ == "__main__":
         'learning_rate': (1e-4, 1e-2)
     }
 
-    X_train, y_train = load_features('v2/Data/Train Test/train_data.csv')
-    X_test, y_test = load_features('v2/Data/Train Test/test_data.csv')
-
+    X_train, y_train = load_features(f'{data_dir}train_data.csv')
+    X_test, y_test = load_features(f'{data_dir}test_data.csv')
     # Hyperparameter tuning
     best_model = train_best_model(name,
-                                  X_train,
-                                  y_train,
-                                  X_test,
-                                  y_test,
-                                  X_train.shape[1:],
-                                  loss,
-                                  max_trials,
-                                  epochs,
-                                  batch_size,
-                                  hyperparam_ranges)
+                                search_dir,
+                                X_train,
+                                y_train,
+                                X_test,
+                                y_test,
+                                X_train.shape[1:],
+                                loss,
+                                max_trials,
+                                epochs,
+                                batch_size,
+                                hyperparam_ranges)
 
     # Save the best model
-    model_path = f'v2/Models/{name}.keras'
     best_model.save(model_path)
-
     # Load, predict, and evaluate the best model
     y_pred = load_and_predict(model_path, X_test)
     mse, rmse, mae, r2 = calc_metrics(y_test, y_pred)

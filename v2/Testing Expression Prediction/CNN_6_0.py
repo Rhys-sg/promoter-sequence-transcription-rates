@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
+import plotly.express as px
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential, load_model  # type: ignore
-from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Activation  # type: ignore
+from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, BatchNormalization , Activation # type: ignore
 from keras.optimizers import Adam  # type: ignore
 from keras.callbacks import EarlyStopping  # type: ignore
 from sklearn.metrics import mean_squared_error, root_mean_squared_error, mean_absolute_error, r2_score
-from keras_tuner import HyperModel, RandomSearch  # type: ignore
+from keras_tuner import HyperModel, RandomSearch
 
 def load_features(file_path):
     df = pd.read_csv(file_path)
@@ -21,6 +22,21 @@ def padded_one_hot_encode(sequence):
     mapping = {'A': [1, 0, 0, 0], 'C': [0, 1, 0, 0], 'G': [0, 0, 1, 0], 'T': [0, 0, 0, 1], '0': [0, 0, 0, 0]}
     return np.array([mapping[nucleotide.upper()] for nucleotide in sequence])
 
+def visualize_tuning_results(tuner):
+    trials = tuner.oracle.trials.values()
+    results = pd.DataFrame([{
+        'trial_id': trial.trial_id,
+        'score': trial.score if trial.status == 'COMPLETED' else None,
+        **trial.hyperparameters.values
+    } for trial in trials])
+
+    results = results.dropna(subset=['score'])
+
+    fig = px.scatter(results, x='trial_id', y='score', 
+                     title='Validation Loss per Trial', 
+                     labels={'trial_id': 'Trial', 'score': 'Validation Loss'})
+    fig.show()
+
 class CNNHyperModel(HyperModel):
     def __init__(self, input_shape, loss):
         self.input_shape = input_shape
@@ -29,48 +45,44 @@ class CNNHyperModel(HyperModel):
     def build(self, hp):
         model = Sequential()
         
-        # Tune number of layers
         for i in range(hp.Int('num_layers', 1, 3)):
-            # Tune filters, kernel size, activation, and pooling
             model.add(Conv1D(
                 filters=hp.Choice(f'filters_{i}', [32, 64, 128]),
                 kernel_size=hp.Choice(f'kernel_size_{i}', [3, 5, 7]),
                 strides=hp.Choice(f'strides_{i}', [1, 2]),
-                padding=hp.Choice(f'padding_{i}', ['same', 'valid']),
-                activation=hp.Choice(f'activation_{i}', ['relu', 'tanh'])
+                activation=None
             ))
+            model.add(BatchNormalization())
             model.add(MaxPooling1D(pool_size=hp.Choice(f'pool_size_{i}', [2, 3])))
+            model.add(Activation(hp.Choice(f'activation_{i}', ['relu', 'tanh'])))
 
         model.add(Flatten())
         model.add(Dense(units=hp.Int('dense_units', 32, 128, step=32), activation='relu'))
         model.add(Dense(1, activation='linear'))
 
-        # Compile model with tuned learning rate
         model.compile(
             optimizer=Adam(hp.Float('learning_rate', 1e-4, 1e-2, sampling='log')),
             loss=self.loss
         )
         return model
 
-def train_best_model(X_train, y_train, X_test, y_test, input_shape, loss, max_trials=5, epochs=2, batch_size=32):
+def train_best_model(name, X_train, y_train, X_test, y_test, input_shape, loss, max_trials, epochs, batch_size):
     tuner = RandomSearch(
         CNNHyperModel(input_shape=input_shape, loss=loss),
         objective='val_loss',
         max_trials=max_trials,
         executions_per_trial=1,
-        directory='cnn_tuning',
-        project_name='cnn_hyperparam_search'
+        directory='v2/Testing Expression Prediction',
+        project_name=f'{name}_hyperparam_search'
     )
 
     tuner.search_space_summary()
-
     early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-
     tuner.search(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_test, y_test), callbacks=[early_stop])
-
     tuner.results_summary()
-    best_model = tuner.get_best_models(num_models=1)[0]
-    return best_model
+    visualize_tuning_results(tuner)
+
+    return tuner.get_best_models(num_models=1)[0]
 
 def calc_metrics(y_test, y_pred):
     mse = mean_squared_error(y_test, y_pred)
@@ -86,30 +98,34 @@ def load_and_predict(model_path, X):
 
 if __name__ == "__main__":
 
+    # Documentation variables
+    name = 'CNN_6_0'
+
     # Hyperparameter tuning variables
-    max_trials = 10
+    max_trials = 3
     
     # Training Hyperparameters
+    loss = 'mean_squared_error'
     epochs = 2
     batch_size = 32
-    loss = 'mean_squared_error'
 
     X_train, y_train = load_features('v2/Data/Train Test/train_data.csv')
     X_test, y_test = load_features('v2/Data/Train Test/test_data.csv')
 
     # Hyperparameter tuning
-    best_model = train_best_model(X_train,
+    best_model = train_best_model(name,
+                                  X_train,
                                   y_train,
                                   X_test,
                                   y_test,
                                   X_train.shape[1:],
                                   loss,
                                   max_trials,
-                                  epochs=epochs,
-                                  batch_size=batch_size)
+                                  epochs,
+                                  batch_size)
 
     # Save the best model
-    model_path = 'v2/Models/CNN_6_0.keras'
+    model_path = f'v2/Models/{name}.keras'
     best_model.save(model_path)
 
     # Load, predict, and evaluate the best model

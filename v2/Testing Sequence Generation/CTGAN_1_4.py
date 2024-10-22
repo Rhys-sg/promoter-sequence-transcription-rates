@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -18,8 +17,12 @@ def remove_section_get_features(sequence, mask_size=10):
     return sequence[:start] + 'N' * mask_size + sequence[start + mask_size:], sequence[start:start + mask_size]
 
 def one_hot_encode_sequence(seq, length=150):
-    encoding = {'A': [1, 0, 0, 0], 'T': [0, 1, 0, 0], 'C': [0, 0, 1, 0], 
-                'G': [0, 0, 0, 1], 'N': [0.25, 0.25, 0.25, 0.25], '0': [0, 0, 0, 0]}
+    encoding = {'A': [1, 0, 0, 0],
+                'T': [0, 1, 0, 0],
+                'C': [0, 0, 1, 0], 
+                'G': [0, 0, 0, 1],
+                'N': [0.25, 0.25, 0.25, 0.25],
+                '0': [0, 0, 0, 0]}
     padded_seq = seq.ljust(length, '0')
     return torch.tensor([encoding[base.upper()] for base in padded_seq], dtype=torch.float32)
 

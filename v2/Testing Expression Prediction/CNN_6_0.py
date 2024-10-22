@@ -1,3 +1,4 @@
+import time
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -22,65 +23,63 @@ def padded_one_hot_encode(sequence):
     mapping = {'A': [1, 0, 0, 0], 'C': [0, 1, 0, 0], 'G': [0, 0, 1, 0], 'T': [0, 0, 0, 1], '0': [0, 0, 0, 0]}
     return np.array([mapping[nucleotide.upper()] for nucleotide in sequence])
 
-def visualize_tuning_results(tuner):
-    trials = tuner.oracle.trials.values()
-    results = pd.DataFrame([{
-        'trial_id': trial.trial_id,
-        'score': trial.score if trial.status == 'COMPLETED' else None,
-        **trial.hyperparameters.values
-    } for trial in trials])
-
-    results = results.dropna(subset=['score'])
-
-    fig = px.scatter(results, x='trial_id', y='score', 
-                     title='Validation Loss per Trial', 
-                     labels={'trial_id': 'Trial', 'score': 'Validation Loss'})
-    fig.show()
-
 class CNNHyperModel(HyperModel):
-    def __init__(self, input_shape, loss):
+    def __init__(self, input_shape, loss, hyperparam_ranges):
         self.input_shape = input_shape
         self.loss = loss
+        self.hyperparam_ranges = hyperparam_ranges
 
     def build(self, hp):
         model = Sequential()
         
-        for i in range(hp.Int('num_layers', 1, 3)):
+        # Number of convolutional layers
+        for i in range(hp.Int('num_layers', 
+                              self.hyperparam_ranges['num_layers'][0], 
+                              self.hyperparam_ranges['num_layers'][1])):
             model.add(Conv1D(
-                filters=hp.Choice(f'filters_{i}', [32, 64, 128]),
-                kernel_size=hp.Choice(f'kernel_size_{i}', [3, 5, 7]),
-                strides=hp.Choice(f'strides_{i}', [1, 2]),
+                filters=hp.Choice(f'filters_{i}', self.hyperparam_ranges['filters']),
+                kernel_size=hp.Choice(f'kernel_size_{i}', self.hyperparam_ranges['kernel_size']),
+                strides=hp.Choice(f'strides_{i}', self.hyperparam_ranges['strides']),
                 activation=None
             ))
             model.add(BatchNormalization())
-            model.add(MaxPooling1D(pool_size=hp.Choice(f'pool_size_{i}', [2, 3])))
-            model.add(Activation(hp.Choice(f'activation_{i}', ['relu', 'tanh'])))
+            model.add(MaxPooling1D(pool_size=hp.Choice(f'pool_size_{i}', self.hyperparam_ranges['pool_size'])))
+            model.add(Activation(hp.Choice(f'activation_{i}', self.hyperparam_ranges['activation'])))
 
         model.add(Flatten())
-        model.add(Dense(units=hp.Int('dense_units', 32, 128, step=32), activation='relu'))
+        
+        # Dense layer with configurable units
+        model.add(Dense(units=hp.Int('dense_units', 
+                                     self.hyperparam_ranges['dense_units'][0], 
+                                     self.hyperparam_ranges['dense_units'][1], 
+                                     step=self.hyperparam_ranges['dense_units'][2]), 
+                        activation='relu'))
+        
+        # Final output layer
         model.add(Dense(1, activation='linear'))
 
+        # Compile the model with the configurable learning rate
         model.compile(
-            optimizer=Adam(hp.Float('learning_rate', 1e-4, 1e-2, sampling='log')),
+            optimizer=Adam(hp.Float('learning_rate', 
+                                    self.hyperparam_ranges['learning_rate'][0], 
+                                    self.hyperparam_ranges['learning_rate'][1], 
+                                    sampling='log')),
             loss=self.loss
         )
         return model
 
-def train_best_model(name, X_train, y_train, X_test, y_test, input_shape, loss, max_trials, epochs, batch_size):
+def train_best_model(name, X_train, y_train, X_test, y_test, input_shape, loss, max_trials, epochs, batch_size, hyperparam_ranges):
     tuner = RandomSearch(
-        CNNHyperModel(input_shape=input_shape, loss=loss),
+        CNNHyperModel(input_shape=input_shape, loss=loss, hyperparam_ranges=hyperparam_ranges),
         objective='val_loss',
         max_trials=max_trials,
         executions_per_trial=1,
-        directory='v2/Testing Expression Prediction',
+        directory='v2/Testing Expression Prediction/Hyperparameter Search',
         project_name=f'{name}_hyperparam_search'
     )
 
-    tuner.search_space_summary()
     early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
     tuner.search(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_test, y_test), callbacks=[early_stop])
-    tuner.results_summary()
-    visualize_tuning_results(tuner)
 
     return tuner.get_best_models(num_models=1)[0]
 
@@ -102,12 +101,24 @@ if __name__ == "__main__":
     name = 'CNN_6_0'
 
     # Hyperparameter tuning variables
-    max_trials = 3
+    max_trials = 30
     
-    # Training Hyperparameters
+    # Unoptimized training Hyperparameters
     loss = 'mean_squared_error'
-    epochs = 2
+    epochs = 100
     batch_size = 32
+
+    # Hyperparameter ranges dictionary
+    hyperparam_ranges = {
+        'num_layers': (1, 3),
+        'filters': [32, 64, 128],
+        'kernel_size': [3, 4, 5],
+        'strides': [1, 2],
+        'pool_size': [2, 3],
+        'activation': ['relu', 'tanh'],
+        'dense_units': (32, 128, 32),
+        'learning_rate': (1e-4, 1e-2)
+    }
 
     X_train, y_train = load_features('v2/Data/Train Test/train_data.csv')
     X_test, y_test = load_features('v2/Data/Train Test/test_data.csv')
@@ -122,7 +133,8 @@ if __name__ == "__main__":
                                   loss,
                                   max_trials,
                                   epochs,
-                                  batch_size)
+                                  batch_size,
+                                  hyperparam_ranges)
 
     # Save the best model
     model_path = f'v2/Models/{name}.keras'

@@ -6,11 +6,11 @@ from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, BatchNormalizatio
 from keras.optimizers import Adam  # type: ignore
 from keras.callbacks import EarlyStopping  # type: ignore
 from sklearn.metrics import mean_squared_error, root_mean_squared_error, mean_absolute_error, r2_score
-from keras_tuner import HyperModel, RandomSearch
+from keras_tuner import HyperModel, BayesianOptimization
 
 def load_features(file_path):
     df = pd.read_csv(file_path)
-    y = MinMaxScaler().fit_transform(df[['Observed log(TX/Txref)']].abs())
+    y =df[['Normalized Expression']].values
     X = preprocess_sequences(df[['Promoter Sequence']].astype(str).agg(''.join, axis=1))
     return X, y
 
@@ -67,17 +67,18 @@ class CNNHyperModel(HyperModel):
         return model
 
 def train_best_model(name, search_dir, X_train, y_train, X_test, y_test, input_shape, loss, max_trials, epochs, batch_size, hyperparam_ranges):
-    tuner = RandomSearch(
+    tuner = BayesianOptimization(
         CNNHyperModel(input_shape=input_shape, loss=loss, hyperparam_ranges=hyperparam_ranges),
         objective='val_loss',
         max_trials=max_trials,
         executions_per_trial=1,
         directory=search_dir,
-        project_name=f'{name}_hyperparam_search'
+        project_name=f'{name}_bayesian_search'
     )
 
     early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-    tuner.search(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_test, y_test), callbacks=[early_stop])
+    tuner.search(X_train, y_train, epochs=epochs, batch_size=batch_size, 
+                 validation_data=(X_test, y_test), callbacks=[early_stop])
 
     return tuner.get_best_models(num_models=1)[0]
 
@@ -120,24 +121,17 @@ if __name__ == "__main__":
         'learning_rate': (1e-4, 1e-2)
     }
 
+    # Load train and test data
     X_train, y_train = load_features(f'{data_dir}train_data.csv')
     X_test, y_test = load_features(f'{data_dir}test_data.csv')
-    # Hyperparameter tuning
-    best_model = train_best_model(name,
-                                search_dir,
-                                X_train,
-                                y_train,
-                                X_test,
-                                y_test,
-                                X_train.shape[1:],
-                                loss,
-                                max_trials,
-                                epochs,
-                                batch_size,
-                                hyperparam_ranges)
+
+    # Perform Bayesian Optimization
+    best_model = train_best_model(name, search_dir, X_train, y_train, X_test, y_test,
+                                  X_train.shape[1:], loss, max_trials, epochs, batch_size, hyperparam_ranges)
 
     # Save the best model
     best_model.save(model_path)
+
     # Load, predict, and evaluate the best model
     y_pred = load_and_predict(model_path, X_test)
     mse, rmse, mae, r2 = calc_metrics(y_test, y_pred)

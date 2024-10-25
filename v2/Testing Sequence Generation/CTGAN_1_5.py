@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 import random
 import keras
+from sklearn.model_selection import train_test_split
 
 def load_data(file_path):
     df = pd.read_csv(file_path)
@@ -25,8 +26,6 @@ def one_hot_encode_sequence(seq, length=150):
                 '0': [0, 0, 0, 0]}
     padded_seq = seq.ljust(length, '0')
     return torch.tensor([encoding[base.upper()] for base in padded_seq], dtype=torch.float32)
-
-from sklearn.model_selection import train_test_split
 
 def prepare_dataloader(df, batch_size=64, test_size=0.01):
     sequences = df['Promoter Sequence'].values
@@ -237,6 +236,10 @@ def generate_infills(generator, sequences, expressions, mask_size=10):
         # Generate infill using the generator
         generated_segment = generator(sequence_tensor, expr_tensor)
         predicted_infill = decode_one_hot_sequence(generated_segment.argmax(dim=2).squeeze().numpy())
+
+        # Predict the expression of the generated segment using the CNN
+        cnn_input = preprocess_cnn_input(sequence_tensor, generated_segment, 0)
+        predicted_expr = cnn(cnn_input).item()
         
         # Reconstruct the full sequence
         infilled_sequence = (
@@ -244,7 +247,7 @@ def generate_infills(generator, sequences, expressions, mask_size=10):
         )
         infilled_sequences.append(infilled_sequence)
     
-    return infilled_sequences
+    return infilled_sequences, predicted_expr
 
 
 if __name__ == '__main__':

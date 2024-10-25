@@ -9,12 +9,14 @@ from skopt import BayesSearchCV
 from skopt.space import Integer, Categorical, Real
 from sklearn.base import BaseEstimator, RegressorMixin
 from tqdm import tqdm
+import glob
+
 
 def load_features(file_path):
     data = pd.read_csv(file_path)
     sequences = data['Promoter Sequence'].values
     targets = data['Normalized Expression'].values
-    X = preprocess_sequences(sequences)
+    X = preprocess_sequences(sequences).transpose(0, 2, 1)
     y = targets.astype(np.float32)
     return X, y
 
@@ -245,26 +247,37 @@ if __name__ == "__main__":
     model_path = f'v2/Models/{name}.pt'
     data_dir = 'v2/Data/Train Test/'
 
-    # Load and split the data
-    X_train, y_train = load_features(f'{data_dir}train_data.csv')
-    X_test, y_test = load_features(f'{data_dir}test_data.csv')
-    X_train = X_train.transpose(0, 2, 1)
-    X_test = X_test.transpose(0, 2, 1)
+    # Load all the data
+    files = glob.glob('v2/Data/Cross Validation/*.csv')
+    file_data = {file.split('\\')[1].split('.csv')[0]: load_features(file) for file in files}
 
-    input_shape = (X_train.shape[0], X_train.shape[1], X_train.shape[2])
+    for file_name, data in file_data.items():
+        print(f"Training on {file_name}")
+        X_train, y_train = data
+        print(X_train.shape)
+        print(y_train.shape)
+    
 
-    # Perform hyperparameter search
-    best_params = hyperparameter_search(X_train, y_train, input_shape, epochs)
-    print("Best Hyperparameters:", best_params)
+    # # Load and split the data
+    # X_train, y_train = load_features(f'{data_dir}train_data.csv')
+    # X_test, y_test = load_features(f'{data_dir}test_data.csv')
+    # X_train = X_train.transpose(0, 2, 1)
+    # X_test = X_test.transpose(0, 2, 1)
 
-    # Train the best model
-    model = PyTorchRegressor(input_shape, best_params, epochs=epochs)
-    model.fit(X_train, y_train)
+    # input_shape = (X_train.shape[0], X_train.shape[1], X_train.shape[2])
 
-    # Make predictions and evaluate
-    y_pred = model.predict(X_test)
-    metrics = calc_metrics(y_test, y_pred)
-    print("Performance Metrics:", metrics)
+    # # Perform hyperparameter search
+    # best_params = hyperparameter_search(X_train, y_train, input_shape, epochs)
+    # print("Best Hyperparameters:", best_params)
 
-    # Save the model
-    save_model(model, model_path)
+    # # Train the best model
+    # model = PyTorchRegressor(input_shape, best_params, epochs=epochs)
+    # model.fit(X_train, y_train)
+
+    # # Make predictions and evaluate
+    # y_pred = model.predict(X_test)
+    # metrics = calc_metrics(y_test, y_pred)
+    # print("Performance Metrics:", metrics)
+
+    # # Save the model
+    # save_model(model, model_path)

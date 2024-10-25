@@ -8,10 +8,7 @@ import keras
 from sklearn.model_selection import train_test_split
 
 def load_data(file_path):
-    df = pd.read_csv(file_path)
-    scaler = MinMaxScaler()
-    df['Normalized Observed log(TX/Txref)'] = scaler.fit_transform(df[['Observed log(TX/Txref)']])
-    return df
+    return pd.read_csv(file_path)
 
 def remove_section_get_features(sequence, mask_size=10):
     start = random.randint(0, len(sequence) - mask_size)
@@ -29,7 +26,7 @@ def one_hot_encode_sequence(seq, length=150):
 
 def prepare_dataloader(df, batch_size=64, test_size=0.01):
     sequences = df['Promoter Sequence'].values
-    expressions = df['Normalized Observed log(TX/Txref)'].values
+    expressions = df['Normalized Expression'].values
     
     X, y = [], []
 
@@ -42,17 +39,9 @@ def prepare_dataloader(df, batch_size=64, test_size=0.01):
     y = torch.stack(y)  # Shape: (num_samples, 10, 4)
     expressions = torch.tensor(expressions, dtype=torch.float32).view(-1, 1)
 
-    X_train, X_test, expr_train, expr_test, y_train, y_test = train_test_split(
-        X, expressions, y, test_size=test_size, random_state=42
-    )
+    dataset = TensorDataset(X, expressions, y)
 
-    train_dataset = TensorDataset(X_train, expr_train, y_train)
-    test_dataset = TensorDataset(X_test, expr_test, y_test)
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-    return train_loader, test_loader
+    return DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 class Generator(nn.Module):
     def __init__(self, input_seq_dim=150 * 4, expr_dim=1, hidden_dim=512, output_dim=10 * 4):
@@ -238,11 +227,15 @@ if __name__ == '__main__':
     adversarial_lambda = 1
     cnn_lambda = 10
     path_to_cnn = 'v2/Models/CNN_5_0.keras'
-    path_to_data = 'v2/Data/combined/LaFleur_supp.csv'
+    path_to_train_data = 'v2/Data/Train Test/train_data.csv'
+    path_to_test_data = 'v2/Data/Train Test/train_data.csv'
 
     # Load Data and Prepare Dataloaders
-    df = load_data(path_to_data)
-    train_loader, test_loader = prepare_dataloader(df, batch_size)
+    train_df = load_data(path_to_train_data)
+    test_df = load_data(path_to_test_data)
+
+    train_loader = prepare_dataloader(train_df, batch_size)
+    test_loader = prepare_dataloader(test_df, batch_size)
 
     # Initialize Models
     generator = Generator()

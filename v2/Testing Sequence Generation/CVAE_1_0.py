@@ -21,23 +21,18 @@ def mask_sequence(sequence, max_mask_length=20):
     seq_length = len(sequence)
     mask_length = random.randint(5, max_mask_length)
     start = random.randint(0, seq_length - mask_length)
-
-    # Replace the masked section with 'N'
     masked_seq = sequence[:start] + 'N' * mask_length + sequence[start + mask_length:]
+    
     return masked_seq
 
 def load_and_preprocess_data(train_path, test_path, seq_length=150):
-    # Load datasets
+
     train_data = pd.read_csv(train_path)
     test_data = pd.read_csv(test_path)
 
     # Apply masking and one-hot encoding
-    X_train = np.stack(
-        train_data['Promoter Sequence'].apply(lambda x: one_hot_encode_sequence(mask_sequence(x), seq_length))
-    )
-    X_test = np.stack(
-        test_data['Promoter Sequence'].apply(lambda x: one_hot_encode_sequence(mask_sequence(x), seq_length))
-    )
+    X_train = np.stack(train_data['Promoter Sequence'].apply(lambda x: one_hot_encode_sequence(mask_sequence(x), seq_length)))
+    X_test = np.stack(test_data['Promoter Sequence'].apply(lambda x: one_hot_encode_sequence(mask_sequence(x), seq_length)))
 
     # Extract normalized expression levels
     y_train = train_data['Normalized Expression'].values.reshape(-1, 1).astype(np.float32)

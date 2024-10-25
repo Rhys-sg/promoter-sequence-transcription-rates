@@ -139,57 +139,39 @@ def get_cnn_loss(cnn, X, y_fake, y_real, expr, batch_size):
     mse = nn.MSELoss()
     losses = []
 
-    # Generate full sequences with infill and predict expression using CNN
     for i in range(batch_size):
-
-        # Predict expression using the CNN
         pred_gen_expr = cnn(preprocess_cnn_input(X, y_fake, i)).item()
-
-        # We should use the CNN-predicted expression for y_real here, but cuts time by half
         pred_real_expr = expr[i].item()
-
-        # Calculate MSE loss between predicted and real expression
         loss = mse(torch.tensor([pred_gen_expr]), torch.tensor([pred_real_expr]))
         losses.append(loss)
     
     return torch.stack(losses).mean()
 
 def preprocess_cnn_input(X, y, i):
-    # Decode one-hot encoded sequences
     segment = decode_one_hot_sequence(y[i].argmax(dim=1).numpy())
     original_seq = decode_tensor_to_sequence(X[i])
     masked_seq, _ = remove_section_get_features(original_seq)
 
-    # Reconstruct the full sequence by replacing masked segment with generated and real segments
     start = masked_seq.find('N' * y.size(1))
     infilled_seq = (
         masked_seq[:start] + segment + masked_seq[start + len(segment):]
     )
 
-    # One-hot encode the infilled sequence for CNN prediction
     return one_hot_encode_sequence(infilled_seq).unsqueeze(0)
 
-# Model Evaluation
 def evaluate_generator(generator, cnn, test_loader):
     mse_loss = nn.MSELoss()
     total_loss = 0
     total_samples = 0
 
-    # Iterate through the test data loader
     for X_batch, expr_batch, y_batch in test_loader:
         batch_size = X_batch.size(0)
-
-        # Generate sequences and calculate CNN predictions
         y_fake = generator(X_batch, expr_batch)
 
         for i in range(batch_size):
-            # Preprocess the input for the CNN
             cnn_input = preprocess_cnn_input(X_batch, y_fake, i)
-
-            # Predict the expression using the CNN
             pred_expr = cnn(cnn_input).item()
 
-            # Calculate the MSE loss with the real expression
             real_expr = expr_batch[i].item()
             loss = mse_loss(torch.tensor([pred_expr]), torch.tensor([real_expr]))
 

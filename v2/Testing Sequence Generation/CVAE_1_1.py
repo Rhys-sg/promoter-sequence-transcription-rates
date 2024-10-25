@@ -5,11 +5,12 @@ from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
 import numpy as np
 import random
+import keras
 
 def load_data(file_path):
     return pd.read_csv(file_path)
 
-def prepare_dataloader(df, batch_size=64, test_size=0.01):
+def prepare_dataloader(df, batch_size=64):
     sequences = df['Promoter Sequence'].values
     expressions = df['Normalized Expression'].values
     
@@ -19,8 +20,8 @@ def prepare_dataloader(df, batch_size=64, test_size=0.01):
         x.append(one_hot_encode_sequence(mask_sequence(seq)))
         y.append(one_hot_encode_sequence(seq))
 
-    x = torch.stack(x)  # Shape: (num_samples, 150, 4)
-    y = torch.stack(y)  # Shape: (num_samples, 10, 4)
+    x = torch.stack(x)
+    y = torch.stack(y)
     expressions = torch.tensor(expressions, dtype=torch.float32).view(-1, 1)
 
     dataset = TensorDataset(x, expressions, y)
@@ -52,17 +53,15 @@ class CVAE(nn.Module):
         super(CVAE, self).__init__()
         self.latent_dim = latent_dim
 
-        # Encoder
         self.encoder = nn.Sequential(
             nn.Conv1d(in_channels=4, out_channels=32, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(32 * 150, 64),
             nn.ReLU(),
-            nn.Linear(64, 2 * latent_dim)  # Outputs mean and logvar
+            nn.Linear(64, 2 * latent_dim)
         )
 
-        # Decoder
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim + 1, 64),
             nn.ReLU(),
@@ -75,7 +74,6 @@ class CVAE(nn.Module):
         return eps * torch.exp(0.5 * logvar) + mean
 
     def forward(self, x, condition):
-        # Transpose to match Conv1d expected input shape: (batch_size, channels, sequence_length)
         x = x.transpose(1, 2)
         
         h = self.encoder(x)
@@ -85,34 +83,68 @@ class CVAE(nn.Module):
         recon = self.decoder(z_cond).view(-1, 150, 4)
         return recon, mean, logvar
 
-def compute_loss(generator, x, condition):
-    recon, mean, logvar = generator(x, condition)
-    reconstruction_loss = F.mse_loss(recon, x, reduction='mean')
-    kl_loss = -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
-    return reconstruction_loss + kl_loss
+class KerasModelWrapper(torch.nn.Module):
+    def __init__(self, path_to_cnn):
+        super(KerasModelWrapper, self).__init__()
+        self.keras_model = keras.models.load_model(path_to_cnn)
 
-def train_step(generator, x, condition, optimizer):
+    def forward(self, x, verbose=0):
+        x_np = x.detach().cpu().numpy()
+        preds = self.keras_model.predict(x_np, verbose=verbose)
+        return torch.tensor(preds).to(x.device)
+    
+def compute_loss(generator, cnn, x, condition, actual_expression, print_message=''):
+    recon, mean, logvar = generator(x, condition)
+
+    recon_loss = F.mse_loss(recon, x, reduction='mean')
+    kl_loss = -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
+    aux_loss = calc_aux_loss(cnn, x, recon, actual_expression)
+
+    print(f'{print_message}Recon Loss: {recon_loss:.4f}, KL Loss: {kl_loss:.4f}, Aux Loss: {aux_loss:.4f}', end='\r')
+    
+    return aux_loss + kl_loss + recon_loss
+
+def calc_aux_loss(cnn, x, recon, actual_expression):
+    predicted_expression = cnn(preprocess_for_cnn(x, recon))
+    actual_expression = actual_expression.mean(dim=(1, 2), keepdim=True).squeeze(-1)
+    return F.mse_loss(predicted_expression, actual_expression, reduction='mean')
+
+def preprocess_for_cnn(x, recon):
+    mask_value = torch.tensor([0.25, 0.25, 0.25, 0.25], dtype=torch.float32, device=x.device)
+    recon_one_hot = F.one_hot(recon.argmax(dim=-1), num_classes=4).float()
+    final_sequence = x.clone()
+    for i in range(x.shape[0]):
+        mask = torch.all(x[i] == mask_value, dim=-1)
+        final_sequence[i][mask] = recon_one_hot[i][mask]
+
+    return final_sequence
+
+def train_step(generator, cnn, x, condition, actual_expression, optimizer, print_message):
     generator.train()
     optimizer.zero_grad()
-    loss = compute_loss(generator, x, condition)
+    loss = compute_loss(generator, cnn, x, condition, actual_expression, print_message)
     loss.backward()
     optimizer.step()
     return loss.item()
 
-def train_generator(generator, optimizer, train_loader, epochs):
+def train_generator(generator, cnn, optimizer, train_loader, epochs):
     for epoch in range(epochs):
         total_loss = 0
-        for train_x, train_cond, y in train_loader:
-            loss = train_step(generator, train_x, train_cond, optimizer)
+        num_batches = len(train_loader)
+        
+        for batch_idx, (train_x, train_cond, actual_expression) in enumerate(train_loader, start=1):
+            if batch_idx==1 or batch_idx % 100 == 0:
+                print_message = f'Epoch {epoch + 1}/{epochs} - Batch {batch_idx}/{num_batches} completed. '
+            loss = train_step(generator, cnn, train_x, train_cond, actual_expression, optimizer, print_message)
             total_loss += loss
-        print(f'Epoch {epoch + 1}/{epochs}, Loss: {total_loss / len(train_loader):.4f}')
+        print(f'Epoch {epoch + 1}/{epochs} completed. Avg Loss: {total_loss / num_batches:.4f}')
 
-def evaluate_generator(generator, test_loader):
+def evaluate_generator(generator, test_loader, cnn):
     generator.eval()
     losses = []
     with torch.no_grad():
         for test_x, test_cond, y in test_loader:
-            loss = compute_loss(generator, test_x, test_cond)
+            loss = compute_loss(generator, cnn, test_x, test_cond, y)
             losses.append(loss.item())
     return np.mean(losses)
 
@@ -150,12 +182,13 @@ def decode_one_hot(encoded_seq):
 def main():
     # Hyperparameters
     batch_size = 32
-    epochs = 10
+    epochs = 1
     latent_dim = 16
 
-    # Paths to Data
+    # Paths to Data and Pre-trained CNN
     path_to_train_data = 'v2/Data/Train Test/train_data.csv'
     path_to_test_data = 'v2/Data/Train Test/train_data.csv'
+    path_to_cnn = 'v2/Models/CNN_5_0.keras'
 
     # Load Data and Prepare Dataloaders
     train_df = load_data(path_to_train_data)
@@ -164,15 +197,16 @@ def main():
     train_loader = prepare_dataloader(train_df, batch_size)
     test_loader = prepare_dataloader(test_df, batch_size)
 
-    # Initialize the generator
+    # Initialize the models and optimizers
+    cnn = KerasModelWrapper(path_to_cnn)
     generator = CVAE(latent_dim)
     optimizer = torch.optim.Adam(generator.parameters(), lr=1e-3)
 
     # Train the generator
-    train_generator(generator, optimizer, train_loader, epochs)
+    train_generator(generator, cnn, optimizer, train_loader, epochs)
 
     # Evaluate the generator
-    test_loss = evaluate_generator(generator, test_loader)
+    test_loss = evaluate_generator(generator, test_loader, cnn)
     print(f'Average Test Loss: {test_loss:.4f}')
 
     # Test Example

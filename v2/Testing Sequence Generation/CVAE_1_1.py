@@ -1,6 +1,9 @@
-import tensorflow as tf
-import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
+import numpy as np
 import random
 
 def one_hot_encode_sequence(seq, length=150):
@@ -13,7 +16,7 @@ def one_hot_encode_sequence(seq, length=150):
         '0': [0, 0, 0, 0]  # Padding
     }
     padded_seq = seq.ljust(length, '0')
-    encoded = np.array([encoding[base.upper()] for base in padded_seq], dtype=np.float32)
+    encoded = torch.tensor([encoding[base.upper()] for base in padded_seq], dtype=torch.float32)
     return encoded
 
 def mask_sequence(sequence, max_mask_length=20):
@@ -21,107 +24,108 @@ def mask_sequence(sequence, max_mask_length=20):
     mask_length = random.randint(5, max_mask_length)
     start = random.randint(0, seq_length - mask_length)
     masked_seq = sequence[:start] + 'N' * mask_length + sequence[start + mask_length:]
-    
     return masked_seq
 
 def load_and_preprocess_data(train_path, test_path, seq_length=150):
-
     train_data = pd.read_csv(train_path)
     test_data = pd.read_csv(test_path)
 
-    # Apply masking and one-hot encoding
-    X_train = np.stack(train_data['Promoter Sequence'].apply(lambda x: one_hot_encode_sequence(mask_sequence(x), seq_length)))
-    X_test = np.stack(test_data['Promoter Sequence'].apply(lambda x: one_hot_encode_sequence(mask_sequence(x), seq_length)))
+    X_train = torch.stack([one_hot_encode_sequence(mask_sequence(seq), seq_length) 
+                           for seq in train_data['Promoter Sequence']])
+    X_test = torch.stack([one_hot_encode_sequence(mask_sequence(seq), seq_length) 
+                          for seq in test_data['Promoter Sequence']])
 
-    # Extract normalized expression levels
-    y_train = train_data['Normalized Expression'].values.reshape(-1, 1).astype(np.float32)
-    y_test = test_data['Normalized Expression'].values.reshape(-1, 1).astype(np.float32)
+    y_train = torch.tensor(train_data['Normalized Expression'].values, dtype=torch.float32).view(-1, 1)
+    y_test = torch.tensor(test_data['Normalized Expression'].values, dtype=torch.float32).view(-1, 1)
 
     return (X_train, y_train), (X_test, y_test)
 
-class CVAE(tf.keras.Model):
+class CVAE(nn.Module):
     def __init__(self, latent_dim):
         super(CVAE, self).__init__()
         self.latent_dim = latent_dim
 
         # Encoder
-        self.encoder = tf.keras.Sequential([
-            tf.keras.layers.InputLayer(input_shape=(150, 4)),
-            tf.keras.layers.Conv1D(32, 3, activation='relu'),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(latent_dim + latent_dim)
-        ])
+        self.encoder = nn.Sequential(
+            nn.Conv1d(in_channels=4, out_channels=32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32 * 150, 64),
+            nn.ReLU(),
+            nn.Linear(64, 2 * latent_dim)  # Outputs mean and logvar
+        )
 
         # Decoder
-        self.decoder = tf.keras.Sequential([
-            tf.keras.layers.InputLayer(input_shape=(latent_dim + 1,)),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(150 * 4, activation='sigmoid'),
-            tf.keras.layers.Reshape((150, 4))
-        ])
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim + 1, 64),
+            nn.ReLU(),
+            nn.Linear(64, 150 * 4),
+            nn.Sigmoid()
+        )
 
     def reparameterize(self, mean, logvar):
-        eps = tf.random.normal(shape=mean.shape)
-        return eps * tf.exp(logvar * 0.5) + mean
+        eps = torch.randn_like(mean)
+        return eps * torch.exp(0.5 * logvar) + mean
 
-    def call(self, x, condition):
-        mean, logvar = tf.split(self.encoder(x), num_or_size_splits=2, axis=1)
+    def forward(self, x, condition):
+        # Transpose to match Conv1d expected input shape: (batch_size, channels, sequence_length)
+        x = x.transpose(1, 2)
+        
+        h = self.encoder(x)
+        mean, logvar = torch.chunk(h, 2, dim=1)
         z = self.reparameterize(mean, logvar)
-        z_cond = tf.concat([z, condition], axis=1)
-        return self.decoder(z_cond), mean, logvar
+        z_cond = torch.cat([z, condition], dim=1)
+        recon = self.decoder(z_cond).view(-1, 150, 4)
+        return recon, mean, logvar
 
 def compute_loss(model, x, condition):
-    reconstruction, mean, logvar = model(x, condition)
-    reconstruction_loss = tf.reduce_mean(tf.square(x - reconstruction))
-    kl_loss = -0.5 * tf.reduce_mean(logvar - tf.square(mean) - tf.exp(logvar) + 1)
+    recon, mean, logvar = model(x, condition)
+    reconstruction_loss = F.mse_loss(recon, x, reduction='mean')
+    kl_loss = -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
     return reconstruction_loss + kl_loss
 
-@tf.function
 def train_step(model, x, condition, optimizer):
-    with tf.GradientTape() as tape:
-        loss = compute_loss(model, x, condition)
-    gradients = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-    return loss
+    model.train()
+    optimizer.zero_grad()
+    loss = compute_loss(model, x, condition)
+    loss.backward()
+    optimizer.step()
+    return loss.item()
 
 def train_model(model, optimizer, train_dataset, epochs=10):
     for epoch in range(epochs):
+        total_loss = 0
         for train_x, train_cond in train_dataset:
             loss = train_step(model, train_x, train_cond, optimizer)
-        print(f'Epoch {epoch + 1}/{epochs}, Loss: {loss.numpy():.4f}')
+            total_loss += loss
+        print(f'Epoch {epoch + 1}/{epochs}, Loss: {total_loss / len(train_dataset):.4f}')
 
-# Evaluation function
 def evaluate_model(model, test_dataset):
+    model.eval()
     losses = []
-    for test_x, test_cond in test_dataset:
-        loss = compute_loss(model, test_x, test_cond)
-        losses.append(loss.numpy())
+    with torch.no_grad():
+        for test_x, test_cond in test_dataset:
+            loss = compute_loss(model, test_x, test_cond)
+            losses.append(loss.item())
     return np.mean(losses)
 
 def main():
-    # Load and preprocess data
     train_path = 'v2/Data/Train Test/train_data.csv'
     test_path = 'v2/Data/Train Test/test_data.csv'
     (X_train, y_train), (X_test, y_test) = load_and_preprocess_data(train_path, test_path)
 
-    # Initialize model and optimizer
     latent_dim = 16
     model = CVAE(latent_dim)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    # Prepare datasets
     batch_size = 32
-    train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train)).shuffle(1000).batch(batch_size)
-    test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test)).batch(batch_size)
+    train_dataset = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
+    test_dataset = DataLoader(TensorDataset(X_test, y_test), batch_size=batch_size)
 
-    # Train the model
     train_model(model, optimizer, train_dataset, epochs=10)
 
-    # Evaluate the model
     test_loss = evaluate_model(model, test_dataset)
     print(f'Average Test Loss: {test_loss:.4f}')
 
-# Run the main function
 if __name__ == '__main__':
     main()

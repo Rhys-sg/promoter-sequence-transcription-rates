@@ -22,7 +22,7 @@ def one_hot_encode_sequence(seq, length=150):
     padded_seq = seq.ljust(length, '0')
     return torch.tensor([encoding[base.upper()] for base in padded_seq], dtype=torch.float32)
 
-def prepare_dataloader(df, batch_size=64, test_size=0.01):
+def prepare_dataloader(df, batch_size=64):
     sequences = df['Promoter Sequence'].values
     expressions = df['Normalized Expression'].values
     

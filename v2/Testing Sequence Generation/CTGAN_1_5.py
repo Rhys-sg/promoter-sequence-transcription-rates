@@ -42,12 +42,10 @@ def prepare_dataloader(df, batch_size=64, test_size=0.01):
     y = torch.stack(y)  # Shape: (num_samples, 10, 4)
     expressions = torch.tensor(expressions, dtype=torch.float32).view(-1, 1)
 
-    # Train-Test Split
     X_train, X_test, expr_train, expr_test, y_train, y_test = train_test_split(
         X, expressions, y, test_size=test_size, random_state=42
     )
 
-    # Create DataLoaders
     train_dataset = TensorDataset(X_train, expr_train, y_train)
     test_dataset = TensorDataset(X_test, expr_test, y_test)
 

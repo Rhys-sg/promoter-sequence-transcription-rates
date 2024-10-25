@@ -4,6 +4,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 import pandas as pd
 import numpy as np
+import keras
 
 def get_device():
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -64,6 +65,16 @@ class CVAE(nn.Module):
         z = self.reparameterize(mu, logvar)
         return self.decode(z, c), mu, logvar
 
+class KerasModelWrapper(torch.nn.Module):
+    def __init__(self, path_to_cnn):
+        super(KerasModelWrapper, self).__init__()
+        self.keras_model = keras.models.load_model(path_to_cnn)
+
+    def forward(self, x, verbose=0):
+        x_np = x.detach().cpu().numpy()
+        preds = self.keras_model.predict(x_np, verbose=verbose)
+        return torch.tensor(preds).to(x.device)
+
 def loss_function(recon_x, x, mu, logvar):
     BCE = F.binary_cross_entropy(recon_x, x.view(-1, 750), reduction='sum')
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
@@ -96,12 +107,18 @@ def test(epoch, model, test_loader, device):
 
 # Main function
 def main():
+
+    # Paths to Data and Pre-trained CNN
+    path_to_train_data = 'v2/Data/Train Test/train_data.csv'
+    path_to_test_data = 'v2/Data/Train Test/train_data.csv'
+    path_to_cnn = 'v2/Models/CNN_5_0.keras'
+
     # Set up device
     device = get_device()
 
     # Load data
-    train_sequences, train_expression = load_data('v2/Data/Train Test/train_data.csv')
-    test_sequences, test_expression = load_data('v2/Data/Train Test/test_data.csv')
+    train_sequences, train_expression = load_data(path_to_train_data)
+    test_sequences, test_expression = load_data(path_to_test_data)
 
     # Create DataLoader
     train_loader = torch.utils.data.DataLoader(
@@ -115,6 +132,7 @@ def main():
 
     # Initialize model, optimizer
     latent_size = 20
+    cnn = KerasModelWrapper(path_to_cnn)
     model = CVAE(150, latent_size, 1).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 

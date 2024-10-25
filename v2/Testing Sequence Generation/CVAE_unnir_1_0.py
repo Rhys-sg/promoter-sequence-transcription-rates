@@ -5,6 +5,9 @@ from torch.nn import functional as F
 import pandas as pd
 import numpy as np
 
+def get_device():
+    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 def pad_sequence(seq, length=150):
     return seq + 'N' * (length - len(seq))
 
@@ -78,8 +81,8 @@ def train(epoch, model, train_loader, optimizer, device):
         train_loss += loss.item()
         optimizer.step()
         if batch_idx % 10 == 0:
-            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}]\tLoss: {loss.item() / len(data):.6f}')
-    print(f'====> Epoch: {epoch} Average loss: {train_loss / len(train_loader.dataset):.4f}')
+            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}]\tLoss: {loss.item() / len(data):.6f}', end='\r')
+    print(f'\n====> Epoch: {epoch} Average loss: {train_loss / len(train_loader.dataset):.4f}')
 
 def test(epoch, model, test_loader, device):
     model.eval()
@@ -94,7 +97,7 @@ def test(epoch, model, test_loader, device):
 # Main function
 def main():
     # Set up device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
 
     # Load data
     train_sequences, train_expression = load_data('v2/Data/Train Test/train_data.csv')
@@ -112,7 +115,7 @@ def main():
 
     # Initialize model, optimizer
     latent_size = 20
-    model = CVAE(150, latent_size, 1).to(device)  # 150 nucleotides, 5 channels
+    model = CVAE(150, latent_size, 1).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
     # Train and test the model

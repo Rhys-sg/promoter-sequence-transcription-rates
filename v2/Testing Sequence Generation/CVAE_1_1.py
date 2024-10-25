@@ -85,41 +85,73 @@ class CVAE(nn.Module):
         recon = self.decoder(z_cond).view(-1, 150, 4)
         return recon, mean, logvar
 
-def compute_loss(model, x, condition):
-    recon, mean, logvar = model(x, condition)
+def compute_loss(generator, x, condition):
+    recon, mean, logvar = generator(x, condition)
     reconstruction_loss = F.mse_loss(recon, x, reduction='mean')
     kl_loss = -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
     return reconstruction_loss + kl_loss
 
-def train_step(model, x, condition, optimizer):
-    model.train()
+def train_step(generator, x, condition, optimizer):
+    generator.train()
     optimizer.zero_grad()
-    loss = compute_loss(model, x, condition)
+    loss = compute_loss(generator, x, condition)
     loss.backward()
     optimizer.step()
     return loss.item()
 
-def train_model(model, optimizer, train_loader, epochs):
+def train_generator(generator, optimizer, train_loader, epochs):
     for epoch in range(epochs):
         total_loss = 0
         for train_x, train_cond, y in train_loader:
-            loss = train_step(model, train_x, train_cond, optimizer)
+            loss = train_step(generator, train_x, train_cond, optimizer)
             total_loss += loss
         print(f'Epoch {epoch + 1}/{epochs}, Loss: {total_loss / len(train_loader):.4f}')
 
-def evaluate_model(model, test_loader):
-    model.eval()
+def evaluate_generator(generator, test_loader):
+    generator.eval()
     losses = []
     with torch.no_grad():
         for test_x, test_cond, y in test_loader:
-            loss = compute_loss(model, test_x, test_cond)
+            loss = compute_loss(generator, test_x, test_cond)
             losses.append(loss.item())
     return np.mean(losses)
+
+def generate_infills(generator, sequences, expressions, sequence_length=150):
+    generator.eval()  # Set the generator to evaluation mode
+    infilled_sequences = []
+
+    with torch.no_grad():
+        for seq, expr in zip(sequences, expressions):
+            # Find the masked section in the sequence
+            start = seq.find('N')
+            end = len(seq) - seq[::-1].find('N')
+
+            # Prepare the input sequence (masked and one-hot encoded)
+            masked_seq = one_hot_encode_sequence(mask_sequence(seq), length=sequence_length).unsqueeze(0)
+            condition = torch.tensor([[expr]], dtype=torch.float32)  # Reshape to (1, 1)
+
+            # Generate the infilled sequence using the CVAE
+            recon, _, _ = generator(masked_seq, condition)
+            recon_seq = recon.squeeze(0).argmax(dim=-1)  # Convert back to sequence
+
+            # Convert the infilled sequence back to nucleotide format
+            infilled_seq_raw = ''.join(decode_one_hot(recon_seq))
+
+            infilled_seq = seq[:start] + infilled_seq_raw[start:end] + seq[end:]
+            
+            infilled_sequences.append(infilled_seq)
+
+    return infilled_sequences
+
+def decode_one_hot(encoded_seq):
+    mapping = ['A', 'T', 'C', 'G']
+    return [mapping[idx] for idx in encoded_seq]
 
 def main():
     # Hyperparameters
     batch_size = 32
     epochs = 10
+    latent_dim = 16
 
     # Paths to Data
     path_to_train_data = 'v2/Data/Train Test/train_data.csv'
@@ -132,15 +164,26 @@ def main():
     train_loader = prepare_dataloader(train_df, batch_size)
     test_loader = prepare_dataloader(test_df, batch_size)
 
+    # Initialize the generator
+    generator = CVAE(latent_dim)
+    optimizer = torch.optim.Adam(generator.parameters(), lr=1e-3)
 
-    latent_dim = 16
-    model = CVAE(latent_dim)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    # Train the generator
+    train_generator(generator, optimizer, train_loader, epochs)
 
-    train_model(model, optimizer, train_loader, epochs)
-
-    test_loss = evaluate_model(model, test_loader)
+    # Evaluate the generator
+    test_loss = evaluate_generator(generator, test_loader)
     print(f'Average Test Loss: {test_loss:.4f}')
+
+    # Test Example
+    masked_seq = ['TTTTCTATCTACGTACTTGACACTATTTCNNNNNNNNNNATTACCTTAGTTTGTACGTT']
+    expressions = [0.5]
+
+    # Generate infills
+    infilled_seq = generate_infills(generator, masked_seq, expressions)
+    for masked, infilled in zip(masked_seq, infilled_seq):
+        print("Masked:  ", masked)
+        print("Infilled:", infilled)
 
 if __name__ == '__main__':
     main()

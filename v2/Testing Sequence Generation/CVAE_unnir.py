@@ -115,10 +115,7 @@ def test(epoch, model, test_loader, device):
 
 def main():
     # Set up CUDA/GPU/CPU support
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    else:
-        device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     kwargs = {'num_workers': 1, 'pin_memory': True} 
 
     # hyper params

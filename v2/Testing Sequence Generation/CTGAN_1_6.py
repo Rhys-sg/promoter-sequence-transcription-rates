@@ -29,7 +29,7 @@ def one_hot_encode_sequence(seq, length=150):
 
 def prepare_dataloader(df, batch_size=64, test_size=0.01):
     sequences = df['Promoter Sequence'].values
-    expressions = df['Normalized Expression'].values
+    expressions = df['Normalized Observed log(TX/Txref)'].values
     
     X, y = [], []
 

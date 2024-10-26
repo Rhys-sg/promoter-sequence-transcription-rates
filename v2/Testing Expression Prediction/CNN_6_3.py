@@ -110,8 +110,7 @@ class PyTorchRegressor(BaseEstimator, RegressorMixin):
             # Validation phase
             val_loss = self._validate(val_loader, loss_fn)
 
-            print(f"Epoch {epoch + 1}: Train Loss = {epoch_loss / len(train_loader):.4f}, "
-                  f"Val Loss = {val_loss:.4f}")
+            print(f"Epoch {epoch + 1}: Train Loss = {epoch_loss / len(train_loader):.4f}, Val Loss = {val_loss:.4f}")
 
             # Check for early stopping
             if early_stopper.early_stop(val_loss):
@@ -268,7 +267,7 @@ if __name__ == "__main__":
 
     # Load all datasets from the directory
     files = glob.glob('v2/Data/Cross Validation/*.csv')
-    file_data = {file.split('/')[-1].split('.csv')[0]: load_features(file) for file in files}
+    file_data = {file.split('\\')[-1].split('.csv')[0]: load_features(file) for file in files}
 
     # Load previous results (or start fresh)
     results = load_results(results_file)
@@ -279,6 +278,8 @@ if __name__ == "__main__":
 
     # Perform Leave-One-Out Cross-Validation (LOOCV)
     for i, (test_key, (X_test, y_test)) in enumerate(file_data.items()):
+        
+        print(f"Fold {i + 1}: Test File = {test_key}")
 
         # Prepare training data for the current fold
         X_train_list = [X for key, (X, y) in file_data.items() if key != test_key]

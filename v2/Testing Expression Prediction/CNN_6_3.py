@@ -10,6 +10,8 @@ from skopt.space import Integer, Categorical, Real
 from sklearn.base import BaseEstimator, RegressorMixin
 from tqdm import tqdm
 import glob
+import json
+import os
 
 
 def load_features(file_path):
@@ -229,6 +231,24 @@ def hyperparameter_search(X_train, y_train, input_shape, epochs):
 
     return best_params
 
+# Initialize or load previous results
+def load_results(results_file):
+    if os.path.exists(results_file):
+        with open(results_file, 'r') as f:
+            return json.load(f)
+    else:
+        return {"hyperparameter_trials": [], "best_mse": float('inf'), "best_hyperparameters": {}}
+
+# Save updated results to JSON
+def save_results(results, results_file):
+    with open(results_file, 'w') as f:
+        json.dump(results, f, indent=4)
+
+# Save the current best model by overriding the previous one
+def save_best_model(model, path):
+    torch.save(model.state_dict(), path)
+    print(f"New best model saved to {path}")
+
 def save_model(self, path='best_model.pth'):
     torch.save(self.model.state_dict(), path)
 
@@ -237,47 +257,94 @@ def load_model(self, path='best_model.pth'):
     self.model.to(self.device)
     return self.model
 
-
 if __name__ == "__main__":
 
     epochs = 100
 
-    # Documentation variables
-    name = 'CNN_6_0'
-    model_path = f'v2/Models/{name}.pt'
-    data_dir = 'v2/Data/Train Test/'
+    # Paths and filenames
+    results_file = "v2/Testing Expression Prediction/Hyperparameter Search/CNN_6_3_cross_validation/hyperparameter_results.json"
+    runtime_model_path = "v2/Models/CNN_6_3_runtime.pth"
+    model_path = 'v2/Models/CNN_6_3.pt'
 
-    # Load all the data
+    # Load all datasets from the directory
     files = glob.glob('v2/Data/Cross Validation/*.csv')
-    file_data = {file.split('\\')[1].split('.csv')[0]: load_features(file) for file in files}
+    file_data = {file.split('/')[-1].split('.csv')[0]: load_features(file) for file in files}
 
-    for file_name, data in file_data.items():
-        print(f"Training on {file_name}")
-        X_train, y_train = data
-        print(X_train.shape)
-        print(y_train.shape)
-    
+    # Load previous results (or start fresh)
+    results = load_results(results_file)
 
-    # # Load and split the data
-    # X_train, y_train = load_features(f'{data_dir}train_data.csv')
-    # X_test, y_test = load_features(f'{data_dir}test_data.csv')
-    # X_train = X_train.transpose(0, 2, 1)
-    # X_test = X_test.transpose(0, 2, 1)
+    all_mse_scores = []
+    best_hyperparams = None
+    best_mse = float('inf')
 
-    # input_shape = (X_train.shape[0], X_train.shape[1], X_train.shape[2])
+    # Perform Leave-One-Out Cross-Validation (LOOCV)
+    for i, (test_key, (X_test, y_test)) in enumerate(file_data.items()):
 
-    # # Perform hyperparameter search
-    # best_params = hyperparameter_search(X_train, y_train, input_shape, epochs)
-    # print("Best Hyperparameters:", best_params)
+        # Prepare training data for the current fold
+        X_train_list = [X for key, (X, y) in file_data.items() if key != test_key]
+        y_train_list = [y for key, (X, y) in file_data.items() if key != test_key]
 
-    # # Train the best model
-    # model = PyTorchRegressor(input_shape, best_params, epochs=epochs)
-    # model.fit(X_train, y_train)
+        X_train = np.concatenate(X_train_list, axis=0)
+        y_train = np.concatenate(y_train_list, axis=0)
 
-    # # Make predictions and evaluate
-    # y_pred = model.predict(X_test)
-    # metrics = calc_metrics(y_test, y_pred)
-    # print("Performance Metrics:", metrics)
+        # Define input shape for the model
+        input_shape = (X_train.shape[0], X_train.shape[1], X_train.shape[2])
 
-    # # Save the model
-    # save_model(model, model_path)
+        # Perform hyperparameter search (for this fold)
+        params = hyperparameter_search(X_train, y_train, input_shape, epochs)
+        print(f"Best Hyperparameters for Fold {i + 1}: {params}")
+
+        # Train the model with the best hyperparameters for this fold
+        model = PyTorchRegressor(input_shape, params, epochs=epochs)
+        model.fit(X_train, y_train)
+
+        # Make predictions on the test dataset
+        y_pred = model.predict(X_test)
+
+        # Calculate MSE for this fold
+        mse = mean_squared_error(y_test, y_pred)
+        print(f"Fold {i + 1}: MSE = {mse:.4f}")
+        all_mse_scores.append(mse)
+
+        # Save the hyperparameters, fold metrics, and MSE to results JSON
+        trial_data = {
+            "fold": i + 1,
+            "hyperparameters": params,
+            "mse": mse,
+            "training_data_size": len(X_train),
+            "test_data_size": len(X_test)
+        }
+        results["hyperparameter_trials"].append(trial_data)
+
+        # Check if this fold has the best MSE so far
+        if mse < best_mse:
+            best_mse = mse
+            best_hyperparams = params
+
+            # Update best model metrics in the results JSON
+            results["best_mse"] = best_mse
+            results["best_hyperparameters"] = best_hyperparams
+
+            # Save the best model by overriding the previous one
+            save_best_model(model, runtime_model_path)
+
+        # Save the updated results to the JSON file after each fold
+        save_results(results)
+
+    # Print final summary
+    print(f"All MSE Scores: {all_mse_scores}")
+    print(f"Best Hyperparameters: {best_hyperparams}")
+    print(f"Best MSE: {best_mse}")
+
+    # Train the final model with the best hyperparameters on all data
+    X_all = np.concatenate([X for X, y in file_data.values()], axis=0)
+    y_all = np.concatenate([y for X, y in file_data.values()], axis=0)
+
+    input_shape = (X_all.shape[0], X_all.shape[1], X_all.shape[2])
+
+    final_model = PyTorchRegressor(input_shape, best_hyperparams, epochs=epochs)
+    final_model.fit(X_all, y_all)
+
+    # Save the final model
+    torch.save(final_model.model.state_dict(), model_path)
+    print(f"Final model saved to {model_path}")

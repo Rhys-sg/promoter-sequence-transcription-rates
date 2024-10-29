@@ -5,12 +5,25 @@ from torch.nn import functional as F
 import pandas as pd
 import numpy as np
 import random
+from torch.utils.tensorboard import SummaryWriter  # For TensorBoard logging
+
+# Set seed for reproducibility
+seed = 42  # Change 1: Reproducibility
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
 
 def get_device():
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def load_data(filepath):
-    return pd.read_csv(filepath)
+    try:
+        return pd.read_csv(filepath)  # Change 2: Add error handling
+    except FileNotFoundError:
+        print(f"Error: File {filepath} not found.")
+        exit(1)
 
 def mask_data(df, num_masks=1, num_inserts=1, min_mask=1, max_mask=10):
         
@@ -105,6 +118,7 @@ def loss_function(recon_x, x, mu, logvar, cnn, context_expression):
     AUX = F.mse_loss(generated_expression, context_expression)
     BCE = F.binary_cross_entropy(recon_x, x.view(-1, 750), reduction='sum')
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
     return BCE + KLD + AUX
 
 def train(epoch, model, cnn, train_loader, optimizer, device):
@@ -112,31 +126,27 @@ def train(epoch, model, cnn, train_loader, optimizer, device):
     train_loss = 0
     for batch_idx, (data, expression) in enumerate(train_loader):
         data, expression = data.to(device), expression.to(device).unsqueeze(1)
-        recon_batch, mu, logvar = model(data, expression)
         optimizer.zero_grad()
+        recon_batch, mu, logvar = model(data, expression)
         loss = loss_function(recon_batch, data, mu, logvar, cnn, expression)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         train_loss += loss.item()
         optimizer.step()
-        if batch_idx % 10 == 0:
-            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}]\tLoss: {loss.item() / len(data):.6f}', end='\r')
-    print(f'\n====> Epoch: {epoch} Average loss: {train_loss / len(train_loader.dataset):.4f}')
+
+    return train_loss / len(train_loader.dataset)
 
 def test(epoch, model, cnn, test_loader, device):
     model.eval()
     test_loss = 0
     with torch.no_grad():
-        for i, (data, expression) in enumerate(test_loader):
+        for data, expression in test_loader:
             data, expression = data.to(device), expression.to(device).unsqueeze(1)
-            recon_batch, mu, logvar = model(data, expression, cnn)
+            recon_batch, mu, logvar = model(data, expression)
             test_loss += loss_function(recon_batch, data, mu, logvar, cnn, expression).item()
-    print(f'====> Test set loss: {test_loss / len(test_loader.dataset):.4f}')
+    return test_loss / len(test_loader.dataset)
 
 def main():
-
-    # Set seed for reproducibility
-    seed = 42
-    random.seed(seed)
 
     # Paths to Data and Pre-trained CNN
     path_to_train_data = 'v2/Data/Train Test/train_data.csv'
@@ -167,18 +177,26 @@ def main():
     # Create DataLoader
     train_loader = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(train_sequences, train_expression),
-        batch_size=64, shuffle=True
+        batch_size=64, shuffle=True, num_workers=4, pin_memory=True
     )
     test_loader = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(test_sequences, test_expression),
-        batch_size=64, shuffle=False
+        batch_size=64, shuffle=False, num_workers=4, pin_memory=True
     )
+
+    # Initialize TensorBoard writer
+    writer = SummaryWriter('runs/CVAE_experiment')
 
     # Train and test the model
     epochs = 10
     for epoch in range(1, epochs + 1):
-        train(epoch, model, cnn, train_loader, optimizer, device)
-        test(epoch, model, cnn, test_loader, device)
+        train_loss = train(epoch, model, cnn, train_loader, optimizer, device)
+        test_loss = test(epoch, model, cnn, test_loader, device)
+
+        writer.add_scalar('Loss/train', train_loss, epoch)
+        writer.add_scalar('Loss/test', test_loss, epoch)
+
+    writer.close()
 
 if __name__ == "__main__":
     main()

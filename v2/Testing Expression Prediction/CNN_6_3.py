@@ -87,8 +87,8 @@ class PyTorchRegressor(BaseEstimator, RegressorMixin):
         train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.float32))
         val_dataset = TensorDataset(torch.tensor(X_val, dtype=torch.float32), torch.tensor(y_val, dtype=torch.float32))
 
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=4)
-        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True, num_workers=4)
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, drop_last=True, shuffle=True, pin_memory=True, num_workers=4)
+        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, drop_last=True, shuffle=False, pin_memory=True, num_workers=4)
 
         optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
         loss_fn = nn.MSELoss().to(self.device)
@@ -110,7 +110,7 @@ class PyTorchRegressor(BaseEstimator, RegressorMixin):
             # Validation phase
             val_loss = self._validate(val_loader, loss_fn)
 
-            print(f"Epoch {epoch + 1}: Train Loss = {epoch_loss / len(train_loader):.4f}, Val Loss = {val_loss:.4f}")
+            print(f"Epoch {epoch + 1}: Train Loss = {epoch_loss / len(train_loader):.4f}, Val Loss = {val_loss:.4f}\n")
 
             # Check for early stopping
             if early_stopper.early_stop(val_loss):
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     # Perform Leave-One-Out Cross-Validation (LOOCV)
     for i, (test_key, (X_test, y_test)) in enumerate(file_data.items()):
         
-        print(f"Fold {i + 1}: Test File = {test_key}")
+        print(f"Fold {i + 1}: Test File, {test_key}")
 
         # Prepare training data for the current fold
         X_train_list = [X for key, (X, y) in file_data.items() if key != test_key]

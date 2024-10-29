@@ -241,7 +241,7 @@ if __name__ == "__main__":
     epochs = 100
 
     # Documentation variables
-    name = 'CNN_6_0'
+    name = 'CNN_6_2'
     model_path = f'v2/Models/{name}.pt'
     data_dir = 'v2/Data/Train Test/'
 

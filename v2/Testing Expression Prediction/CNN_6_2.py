@@ -131,13 +131,6 @@ class PyTorchRegressor(BaseEstimator, RegressorMixin):
             outputs = self.model(X).squeeze()
         return outputs.cpu().numpy()
 
-    def save(self, path):
-        torch.save(self.model.state_dict(), path)
-
-    def save_parameters(params, path):
-        with open(path, 'w') as f:
-            json.dump(params, f, indent=4)
-
 def calc_metrics(y_test, y_pred):
     mse = mean_squared_error(y_test, y_pred)
     rmse = root_mean_squared_error(y_test, y_pred)
@@ -235,15 +228,6 @@ def hyperparameter_search(X_train, y_train, input_shape, epochs):
 
     return best_params
 
-def load_trained_model(model_path, params_path, input_shape):
-    with open(params_path, 'r') as f:
-        hyperparameters = json.load(f)
-    model = CNNModel(input_shape, hyperparameters)
-    model.load_state_dict(torch.load(model_path))
-    model.eval()
-
-    return model
-
 if __name__ == "__main__":
 
     epochs = 100
@@ -271,11 +255,11 @@ if __name__ == "__main__":
     model.fit(X_train, y_train)
 
     # Save the model and the best hyperparameters
-    model.save(model_path)
-    model.save_parameters(best_params_path)
+    model_scripted = torch.jit.script(model)
+    model_scripted.save(f'{model_path}.pt')
     
     # Load the trained model
-    model = load_trained_model(model_path, best_params_path, input_shape)
+    model = torch.jit.load(f'{model_path}.pt')
 
     # Evaluate the model
     metrics = evaluate_model(model, X_test, y_test)

@@ -4,26 +4,61 @@ from torch import nn, optim
 from torch.nn import functional as F
 import pandas as pd
 import numpy as np
-import keras
+import random
 
 def get_device():
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def pad_sequence(seq, length=150):
-    return seq + 'N' * (length - len(seq))
-
-def one_hot_sequence(seq):
-    mapping = {'A': [1, 0, 0, 0, 0], 'C': [0, 1, 0, 0, 0], 
-               'G': [0, 0, 1, 0, 0], 'T': [0, 0, 0, 1, 0], 
-               'N': [0, 0, 0, 0, 1]}
-    return np.array([mapping[nt] for nt in seq])
-
 def load_data(filepath):
-    data = pd.read_csv(filepath)
-    sequences = data['Promoter Sequence'].apply(lambda x: pad_sequence(x, 150))
-    sequences = np.array([one_hot_sequence(seq) for seq in sequences])
-    expression = data['Normalized Expression'].values
-    return torch.tensor(sequences, dtype=torch.float32), torch.tensor(expression, dtype=torch.float32)
+    return pd.read_csv(filepath)
+
+def mask_data(df, num_masks=1, num_inserts=1, min_mask=1, max_mask=10):
+        
+    original_sequences = df['Promoter Sequence']
+    masked_sequences = []
+    random_infilled_sequences = []
+
+    for sequence in original_sequences:
+        for _ in range(num_masks):
+            mask_length = random.randint(min_mask, max_mask)
+            mask_start = random.randint(0, len(sequence) - mask_length)
+
+            # Mask the sequence
+            masked_seq = sequence[:mask_start] + 'N' * mask_length + sequence[mask_start + mask_length:]
+
+            # Generate multiple random infills for this masked sequence
+            for _ in range(num_inserts):
+                random_infill = ''.join(random.choices('ATCG', k=mask_length))
+                random_infilled_seq = masked_seq[:mask_start] + random_infill + masked_seq[mask_start + len(random_infill):]
+
+                # Collect results
+                masked_sequences.append(masked_seq)
+                random_infilled_sequences.append(random_infilled_seq)
+
+    # Construct the new DataFrame with required columns
+    new_df = pd.DataFrame({
+        'Original Promoter Sequence': original_sequences.repeat(num_masks * num_inserts).reset_index(drop=True),
+        'Masked Promoter Sequence': masked_sequences,
+        'Random Infilled Promoter Sequence': random_infilled_sequences
+    })
+
+    return new_df
+
+def preprocess_data(df, cnn, device):
+
+    def one_hot_sequence(seq, length=150):
+        seq = seq.ljust(length, '0')
+        return np.eye(5)[['ACGTN0'.index(nt) for nt in seq]]
+
+    # Apply one-hot encoding and batch the sequences
+    sequences = df['Promoter Sequence'].apply(lambda x: one_hot_sequence(x))
+    sequences = torch.tensor(np.stack(sequences), dtype=torch.float32).to(device)
+
+    # Predict expression using the CNN in batches (disable gradients)
+    with torch.no_grad():
+        expression = cnn(sequences).squeeze(1)
+
+    return sequences, expression
 
 class CVAE(nn.Module):
     def __init__(self, seq_length, latent_size, class_size):
@@ -65,29 +100,21 @@ class CVAE(nn.Module):
         z = self.reparameterize(mu, logvar)
         return self.decode(z, c), mu, logvar
 
-class KerasModelWrapper(torch.nn.Module):
-    def __init__(self, path_to_cnn):
-        super(KerasModelWrapper, self).__init__()
-        self.keras_model = keras.models.load_model(path_to_cnn)
-
-    def forward(self, x, verbose=0):
-        x_np = x.detach().cpu().numpy()
-        preds = self.keras_model.predict(x_np, verbose=verbose)
-        return torch.tensor(preds).to(x.device)
-
-def loss_function(recon_x, x, mu, logvar):
+def loss_function(recon_x, x, mu, logvar, cnn, context_expression):
+    generated_expression = cnn(recon_x.view(-1, 5, 150)).squeeze(1)
+    AUX = F.mse_loss(generated_expression, context_expression)
     BCE = F.binary_cross_entropy(recon_x, x.view(-1, 750), reduction='sum')
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    return BCE + KLD
+    return BCE + KLD + AUX
 
-def train(epoch, model, train_loader, optimizer, device):
+def train(epoch, model, cnn, train_loader, optimizer, device):
     model.train()
     train_loss = 0
     for batch_idx, (data, expression) in enumerate(train_loader):
         data, expression = data.to(device), expression.to(device).unsqueeze(1)
         recon_batch, mu, logvar = model(data, expression)
         optimizer.zero_grad()
-        loss = loss_function(recon_batch, data, mu, logvar)
+        loss = loss_function(recon_batch, data, mu, logvar, cnn, expression)
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
@@ -95,30 +122,47 @@ def train(epoch, model, train_loader, optimizer, device):
             print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}]\tLoss: {loss.item() / len(data):.6f}', end='\r')
     print(f'\n====> Epoch: {epoch} Average loss: {train_loss / len(train_loader.dataset):.4f}')
 
-def test(epoch, model, test_loader, device):
+def test(epoch, model, cnn, test_loader, device):
     model.eval()
     test_loss = 0
     with torch.no_grad():
         for i, (data, expression) in enumerate(test_loader):
             data, expression = data.to(device), expression.to(device).unsqueeze(1)
-            recon_batch, mu, logvar = model(data, expression)
-            test_loss += loss_function(recon_batch, data, mu, logvar).item()
+            recon_batch, mu, logvar = model(data, expression, cnn)
+            test_loss += loss_function(recon_batch, data, mu, logvar, cnn, expression).item()
     print(f'====> Test set loss: {test_loss / len(test_loader.dataset):.4f}')
 
-# Main function
 def main():
+
+    # Set seed for reproducibility
+    seed = 42
+    random.seed(seed)
 
     # Paths to Data and Pre-trained CNN
     path_to_train_data = 'v2/Data/Train Test/train_data.csv'
     path_to_test_data = 'v2/Data/Train Test/train_data.csv'
-    path_to_cnn = 'v2/Models/CNN_5_0.keras'
+    path_to_cnn = 'v2/Models/CNN_6_2.pt'
 
     # Set up device
     device = get_device()
 
+    # Initialize model, optimizer
+    latent_size = 20
+    cnn = torch.jit.load(f'{path_to_cnn}.pt')
+    model = CVAE(150, latent_size, 1).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
     # Load data
-    train_sequences, train_expression = load_data(path_to_train_data)
-    test_sequences, test_expression = load_data(path_to_test_data)
+    train_df = load_data(path_to_train_data)
+    test_df = load_data(path_to_test_data)
+
+    # Augment/mask data
+    augmented_train_df = mask_data(train_df, num_masks=3, num_inserts=1, min_mask=1, max_mask=10)
+    augmented_test_df = mask_data(test_df, num_masks=3, num_inserts=1, min_mask=1, max_mask=10)
+
+    # Preprocess data
+    train_sequences, train_expression = preprocess_data(augmented_train_df, cnn, device)
+    test_sequences, test_expression = preprocess_data(augmented_test_df, cnn, device)
 
     # Create DataLoader
     train_loader = torch.utils.data.DataLoader(
@@ -130,24 +174,11 @@ def main():
         batch_size=64, shuffle=False
     )
 
-    # Initialize model, optimizer
-    latent_size = 20
-    cnn = KerasModelWrapper(path_to_cnn)
-    model = CVAE(150, latent_size, 1).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
     # Train and test the model
     epochs = 10
     for epoch in range(1, epochs + 1):
-        train(epoch, model, train_loader, optimizer, device)
-        test(epoch, model, test_loader, device)
-
-        # # Generate new sequences
-        # with torch.no_grad():
-        #     expression_values = torch.linspace(0, 1, steps=10).unsqueeze(1).to(device)
-        #     sample = torch.randn(10, latent_size).to(device)
-        #     generated_sequences = model.decode(sample, expression_values).cpu()
-        #     print("Generated Sequences:", generated_sequences)
+        train(epoch, model, cnn, train_loader, optimizer, device)
+        test(epoch, model, cnn, test_loader, device)
 
 if __name__ == "__main__":
     main()

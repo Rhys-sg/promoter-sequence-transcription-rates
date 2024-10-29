@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 import pandas as pd
+import json
 from sklearn.metrics import mean_squared_error, root_mean_squared_error, mean_absolute_error, r2_score
 from skopt import BayesSearchCV
 from skopt.space import Integer, Categorical, Real
@@ -84,7 +85,7 @@ class PyTorchRegressor(BaseEstimator, RegressorMixin):
         val_dataset = TensorDataset(torch.tensor(X_val, dtype=torch.float32), torch.tensor(y_val, dtype=torch.float32))
 
         train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=4)
-        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True, num_workers=4)
+        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
         optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
         loss_fn = nn.MSELoss().to(self.device)
@@ -103,13 +104,9 @@ class PyTorchRegressor(BaseEstimator, RegressorMixin):
                 optimizer.step()
                 epoch_loss += loss.item()
 
-            # Validation phase
             val_loss = self._validate(val_loader, loss_fn)
+            print(f"Epoch {epoch + 1}: Train Loss = {epoch_loss / len(train_loader):.4f}, Val Loss = {val_loss:.4f}")
 
-            print(f"Epoch {epoch + 1}: Train Loss = {epoch_loss / len(train_loader):.4f}, "
-                  f"Val Loss = {val_loss:.4f}")
-
-            # Check for early stopping
             if early_stopper.early_stop(val_loss):
                 print(f"Early stopping at epoch {epoch + 1}")
                 break
@@ -134,6 +131,12 @@ class PyTorchRegressor(BaseEstimator, RegressorMixin):
             outputs = self.model(X).squeeze()
         return outputs.cpu().numpy()
 
+    def save(self, path):
+        torch.save(self.model.state_dict(), path)
+
+    def save_parameters(params, path):
+        with open(path, 'w') as f:
+            json.dump(params, f, indent=4)
 
 def calc_metrics(y_test, y_pred):
     mse = mean_squared_error(y_test, y_pred)
@@ -141,6 +144,11 @@ def calc_metrics(y_test, y_pred):
     mae = mean_absolute_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
     return {"MSE": mse, "RMSE": rmse, "MAE": mae, "R²": r2}
+
+def evaluate_model(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    metrics = calc_metrics(y_test, y_pred)
+    return metrics
 
 class PyTorchRegressorCV(BaseEstimator, RegressorMixin):
     def __init__(self, input_shape, num_layers=1, filters=(32,), kernel_size=(3,), stride=(1,), 
@@ -227,14 +235,14 @@ def hyperparameter_search(X_train, y_train, input_shape, epochs):
 
     return best_params
 
-def save_model(self, path='best_model.pth'):
-    torch.save(self.model.state_dict(), path)
+def load_trained_model(model_path, params_path, input_shape):
+    with open(params_path, 'r') as f:
+        hyperparameters = json.load(f)
+    model = CNNModel(input_shape, hyperparameters)
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
 
-def load_model(self, path='best_model.pth'):
-    self.model.load_state_dict(torch.load(path))
-    self.model.to(self.device)
-    return self.model
-
+    return model
 
 if __name__ == "__main__":
 
@@ -243,6 +251,7 @@ if __name__ == "__main__":
     # Documentation variables
     name = 'CNN_6_2'
     model_path = f'v2/Models/{name}.pt'
+    best_params_path = f'v2/Models/{name}_best_params.json'
     data_dir = 'v2/Data/Train Test/'
 
     # Load and split the data
@@ -261,10 +270,14 @@ if __name__ == "__main__":
     model = PyTorchRegressor(input_shape, best_params, epochs=epochs)
     model.fit(X_train, y_train)
 
-    # Make predictions and evaluate
-    y_pred = model.predict(X_test)
-    metrics = calc_metrics(y_test, y_pred)
-    print("Performance Metrics:", metrics)
+    # Save the model and the best hyperparameters
+    model.save(model_path)
+    model.save_parameters(best_params_path)
+    
+    # Load the trained model
+    model = load_trained_model(model_path, best_params_path, input_shape)
 
-    # Save the model
-    save_model(model, model_path)
+    # Evaluate the model
+    metrics = evaluate_model(model, X_test, y_test)
+    for metric, value in metrics.items():
+        print(f"{metric}: {value:.4f}")

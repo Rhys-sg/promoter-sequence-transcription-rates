@@ -7,10 +7,12 @@ from keras.optimizers import Adam  # type: ignore
 from keras.callbacks import EarlyStopping  # type: ignore
 from sklearn.metrics import mean_squared_error, root_mean_squared_error, mean_absolute_error, r2_score
 from keras_tuner import HyperModel, BayesianOptimization
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 def load_features(file_path):
     df = pd.read_csv(file_path)
-    y =df[['Normalized Expression']].values
+    y = df[['Normalized Expression']].values
     X = preprocess_sequences(df[['Promoter Sequence']].astype(str).agg(''.join, axis=1))
     return X, y
 
@@ -93,6 +95,15 @@ def load_and_predict(model_path, X):
     model = load_model(model_path)
     predictions_array = model.predict(np.array(X))[:, 0]
     return pd.DataFrame(predictions_array, columns=['Value'])
+
+def plot_kde(df, predicted):
+    sns.kdeplot(df['Normalized Expression'], fill=True, color='blue', label='Normalized Expression')
+    sns.kdeplot(predicted, fill=True, color='green', label='Our Prediction')
+    plt.title('Kernel Density Plot')
+    plt.xlabel('Value')
+    plt.ylabel('Density')
+    plt.legend()
+    plt.show()
 
 if __name__ == "__main__":
     # Documentation variables

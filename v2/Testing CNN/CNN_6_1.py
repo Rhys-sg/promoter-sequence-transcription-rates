@@ -105,6 +105,29 @@ def plot_kde(df, predicted):
     plt.legend()
     plt.show()
 
+def plot_scatter(observed, predicted):
+    plt.figure(figsize=(10, 6))
+    plt.scatter(observed, predicted, color='blue', alpha=0.5, label='Data points')
+    min_val = min(min(observed), min(predicted))
+    max_val = max(max(observed), max(predicted))
+    plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', label='y = x line')
+    plt.xlabel('Observed Expression')
+    plt.ylabel('Our Prediction')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def plot_hexbin(observed, predicted):
+    plt.figure(figsize=(10, 6))
+    plt.hexbin(observed, predicted, gridsize=50, cmap='Blues', mincnt=1)
+    plt.colorbar(label='Counts')
+    plt.plot([0, 1], [0, 1], color='red', linestyle='--', label='y = x line')
+    plt.xlabel('Observed Expression')
+    plt.ylabel('Our Prediction')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 if __name__ == "__main__":
     # Documentation variables
     name = 'CNN_6_0'

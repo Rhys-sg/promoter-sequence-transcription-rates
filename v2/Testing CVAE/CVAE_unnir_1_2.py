@@ -247,31 +247,36 @@ if torch.cuda.is_available():
 def main():
 
     # Defining hyperparameters
-    batch_size = 512
-    epochs = 1
+    batch_size = 64
+    epochs = 100
     early_stopping_patience = 10
     early_stopping_min_delta = 0.01
     latent_size = 20
+    num_masks = 4
+    min_mask_len = 5
+    max_mask_len = 20
 
     # Paths to Data and Pre-trained CNN
-    path_to_train = 'v2/Data/Augmented/augmented_train_data_6_1.csv'
-    path_to_test = 'v2/Data/Augmented/augmented_test_data_6_1.csv'
-    path_to_cvae = 'v2/Models/CVAE_6_1.pt'
-    path_to_cnn = 'v2/Models/CNN_6_1.keras'
-    path_to_summary = 'v2/Testing CVAE/runs/CNN_6_1_summary'
+    path_to_data = '../Data/Combined/LaFleur_supp.csv'
+    path_to_cvae = '../Models/CVAE_6_1_2.pt'
+    path_to_cnn = '../Models/CNN_6_1_2.keras'
+    path_to_summary = '../Testing CVAE/runs/CNN_6_2_summary'
 
     # Set up device
     device = get_device()
 
     # Initialize model, optimizer
-    latent_size = 20
     cnn = KerasModelWrapper(path_to_cnn)
     model = CVAE(150, latent_size, 1).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-    # Load data and one-hot encode sequences
-    onehot_masked_train, mask_lengths_train, mask_starts_train, expressions_train = load_data(path_to_train)
-    onehot_masked_test, mask_lengths_test, mask_starts_test, expressions_test = load_data(path_to_test)
+    # Load data, one-hot encode, mask sequences
+    onehot_masked, expressions = load_features(path_to_data, num_masks, min_mask_len, max_mask_len)
+
+    # Split data into training and testing sets
+    onehot_masked_train, onehot_masked_test, expressions_train, expressions_test = train_test_split(
+        onehot_masked, expressions, test_size=0.2, random_state=seed
+    )
 
     # Preprocess sequences and expressions into tensors
     masked_tensor_train = torch.tensor(np.stack(onehot_masked_train), dtype=torch.float32)
@@ -288,6 +293,7 @@ def main():
         torch.utils.data.TensorDataset(masked_tensor_test, expressions_tensor_test),
         batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True
     )
+
 
     # Train and test the model
     train_losses, test_losses = fit_model(epochs,

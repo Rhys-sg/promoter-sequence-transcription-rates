@@ -101,8 +101,9 @@ def loss_function(recon_x, x, mu, logvar, cnn, context_expression):
     AUX = F.mse_loss(generated_expression, context_expression.squeeze())
     BCE = F.binary_cross_entropy(recon_x.view(-1, 600), x.view(-1, 600), reduction='sum')
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    unmasked_loss = calculate_unmasked_mse(x.view(-1, 150, 4), recon_x.view(-1, 150, 4))
 
-    return BCE + KLD + AUX
+    return BCE + KLD + AUX + unmasked_loss
 
 def preprocess_for_cnn(x, recon):
     mask_value = torch.tensor([0.25, 0.25, 0.25, 0.25], dtype=torch.float32, device=x.device)
@@ -113,6 +114,17 @@ def preprocess_for_cnn(x, recon):
         final_sequence[i][mask] = recon_one_hot[i][mask]
 
     return final_sequence
+
+def calculate_unmasked_mse(x, recon_x):
+
+    # Calculate MSE loss only for unmasked regions
+    mask_value = torch.tensor([0.25, 0.25, 0.25, 0.25], dtype=torch.float32, device=x.device)
+    unmasked_indices = torch.all(x != mask_value, dim=-1)
+    
+    # Apply mask to x and recon_x
+    unmasked_x = x[unmasked_indices]
+    unmasked_recon_x = recon_x[unmasked_indices]
+    return F.mse_loss(unmasked_recon_x, unmasked_x)  
 
 def fit_model(epochs,
               model,
@@ -215,13 +227,12 @@ def decode_one_hot(encoded_seq):
                (0, 0, 0, 0) : ''} # Padding
     return [mapping[tuple(nucleotide)] for nucleotide in encoded_seq]
 
-def generate_infills(model, cnn, sequences, expressions):
+def generate_infills(model, cnn, sequences, expressions, max_length=150):
     
     # Convert sequences to one-hot encoding, and convert to tensor
-    one_hot_sequences = [one_hot_sequence(seq) for seq in sequences]
+    one_hot_sequences = [one_hot_sequence(seq.zfill(max_length)) for seq in sequences]
     one_hot_sequences_tensor = torch.tensor(np.stack(one_hot_sequences), dtype=torch.float32)
     expressions_tensor = torch.tensor(expressions, dtype=torch.float32).unsqueeze(1)
-
     with torch.no_grad():
         recon_sequences, _, _ = model(one_hot_sequences_tensor, expressions_tensor)
 
@@ -235,6 +246,13 @@ def generate_infills(model, cnn, sequences, expressions):
         decoded_sequences.append("".join(decoded_seq))
     
     return decoded_sequences, predicted_expressions
+
+def predict_with_cnn(cnn, sequences, max_length=150):
+    one_hot_sequences = [one_hot_sequence(seq.zfill(max_length)) for seq in sequences]
+    one_hot_sequences_tensor = torch.tensor(np.stack(one_hot_sequences), dtype=torch.float32)
+    with torch.no_grad():
+        expressions = cnn(one_hot_sequences_tensor).cpu().numpy().flatten()
+    return expressions
 
 # Set seed for reproducibility
 seed = 42

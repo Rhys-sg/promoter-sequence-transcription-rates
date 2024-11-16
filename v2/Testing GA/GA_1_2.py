@@ -4,6 +4,7 @@ Each masked region is treated as a seperate chromosome, filled independently usi
 The fitness of each individual is calculated as the negative absolute difference between the predicted transcription rate and the target rate.
 The surviving population is selected using tournament selection, and the next generation is created using crossover and mutation.
 
+This approach includes adaptive mutation rate based on the diversity score of the population.
 """
 
 
@@ -78,6 +79,19 @@ def mutate(sequence, mask_indices, mutation_rate=0.1):
             sequence[i] = random.choice(['A', 'C', 'G', 'T'])
     return ''.join(sequence)
 
+def adapt_mutation_rate(mutation_rate, diversity_score, base_rate=0.1, max_rate=0.5, threshold=0.2):
+    """Adapt the mutation rate based on diversity score.
+       Increase mutation rate if diversity is below a threshold."""
+    if diversity_score < threshold:
+        return min(mutation_rate * 1.2, max_rate)
+    return max(mutation_rate * 0.9, base_rate)
+
+def calculate_diversity(population):
+    """Calculate diversity score as the proportion of unique sequences in the population."""
+    unique_sequences = len(set(population))
+    diversity_score = unique_sequences / len(population)
+    return diversity_score
+
 def genetic_algorithm(cnn, masked_sequence, target_expression, pop_size=20, generations=100, base_mutation_rate=0.1, precision=0.01, print_progress=True):
     # Identify masked positions (positions with 'N')
     mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
@@ -109,14 +123,18 @@ def genetic_algorithm(cnn, masked_sequence, target_expression, pop_size=20, gene
                 print("Early stopping as target TX rate is achieved.")
             break
 
+        # Calculate diversity score for the island and adapt mutation rate
+        diversity_score = calculate_diversity(population)
+        mutation_rate = adapt_mutation_rate(base_mutation_rate, diversity_score)
+
         # Select parents and create next generation
         parents = select_parents(population, fitness_scores, pop_size // 2)
         next_gen = []
         while len(next_gen) < pop_size:
             parent1, parent2 = random.sample(parents, 2)
             child1, child2 = crossover(parent1, parent2, masked_regions)
-            next_gen.append(mutate(child1, mask_indices, base_mutation_rate))
-            next_gen.append(mutate(child2, mask_indices, base_mutation_rate))
+            next_gen.append(mutate(child1, mask_indices, mutation_rate))
+            next_gen.append(mutate(child2, mask_indices, mutation_rate))
         
         population = next_gen
 

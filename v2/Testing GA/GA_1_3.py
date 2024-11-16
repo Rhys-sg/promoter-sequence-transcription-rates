@@ -4,6 +4,8 @@ Each masked region is treated as a seperate chromosome, filled independently usi
 The fitness of each individual is calculated as the negative absolute difference between the predicted transcription rate and the target rate.
 The surviving population is selected using tournament selection, and the next generation is created using crossover and mutation.
 
+This approach includes sub-populations (islands) that evolve independently and exchange individuals at set intervals to promote diversity.
+It also includes adaptive mutation rate based on the diversity score of the population.
 """
 
 
@@ -78,47 +80,96 @@ def mutate(sequence, mask_indices, mutation_rate=0.1):
             sequence[i] = random.choice(['A', 'C', 'G', 'T'])
     return ''.join(sequence)
 
-def genetic_algorithm(cnn, masked_sequence, target_expression, pop_size=20, generations=100, base_mutation_rate=0.1, precision=0.01, print_progress=True):
-    # Identify masked positions (positions with 'N')
+def adapt_mutation_rate(mutation_rate, diversity_score, base_rate=0.1, max_rate=0.5, threshold=0.2):
+    """Adapt the mutation rate based on diversity score.
+       Increase mutation rate if diversity is below a threshold."""
+    if diversity_score < threshold:
+        return min(mutation_rate * 1.2, max_rate)
+    return max(mutation_rate * 0.9, base_rate)
+
+def calculate_diversity(population):
+    """Calculate diversity score as the proportion of unique sequences in the population."""
+    unique_sequences = len(set(population))
+    diversity_score = unique_sequences / len(population)
+    return diversity_score
+
+def initialize_islands(masked_sequence, mask_indices, pop_size, num_islands):
+    """Initialize multiple islands with distinct sub-populations."""
+    island_size = pop_size // num_islands
+    islands = []
+    for _ in range(num_islands):
+        islands.append(initialize_population(masked_sequence, mask_indices, island_size))
+    return islands
+
+def migrate_between_islands(islands, num_migrants):
+    """Randomly select individuals to migrate between islands."""
+    num_islands = len(islands)
+    migrants = []
+    for island in islands:
+        migrants.append(random.sample(island, num_migrants))  # Select migrants from each island
+
+    # Distribute migrants to other islands
+    for i in range(num_islands):
+        receiving_island = islands[i]
+        for j, migrant in enumerate(migrants):
+            if j != i:  # Avoid sending migrants back to the same island
+                receiving_island.extend(migrant)
+
+        # Limit the island size after migration
+        islands[i] = receiving_island[:len(receiving_island) - num_migrants + len(migrants[i])]
+        
+def genetic_algorithm(cnn, masked_sequence, target_expression, pop_size=20, survival_rate=0.5, generations=100, base_mutation_rate=0.1, precision=0.01, num_islands=4, migration_interval=10, num_migrants=2, print_progress=True):
+    # Identify masked positions
     mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
     masked_regions = find_masked_regions(masked_sequence)
 
-    # Initialize population
-    population = initialize_population(masked_sequence, mask_indices, pop_size)
+    # Initialize islands
+    islands = initialize_islands(masked_sequence, mask_indices, pop_size, num_islands)
     best_sequence = None
     best_fitness = -float('inf')
     best_prediction = None
 
     for gen in range(generations):
-        # Evaluate population
-        fitness_scores, predictions = evaluate_population(cnn, population, target_expression)
-        
-        # Track the best sequence
-        best_idx = np.argmax(fitness_scores)
-        if fitness_scores[best_idx] > best_fitness:
-            best_fitness = fitness_scores[best_idx]
-            best_sequence = population[best_idx]
-            best_prediction = predictions[best_idx]
-        
+        for island_index in range(num_islands):
+            # Evaluate the island population
+            population = islands[island_index]
+            fitness_scores, predictions = evaluate_population(cnn, population, target_expression)
+
+            # Track the best sequence overall
+            best_idx = np.argmax(fitness_scores)
+            if fitness_scores[best_idx] > best_fitness:
+                best_fitness = fitness_scores[best_idx]
+                best_sequence = population[best_idx]
+                best_prediction = predictions[best_idx]
+            
+            # Early stopping if target is reached
+            if abs(best_prediction - target_expression) < precision:
+                if print_progress:
+                    print("Early stopping as target TX rate is achieved.")
+                return best_sequence, best_prediction
+            
+            # Calculate diversity score for the island and adapt mutation rate
+            diversity_score = calculate_diversity(population)
+            mutation_rate = adapt_mutation_rate(base_mutation_rate, diversity_score)
+            
+            # Select parents and create the next generation for this island
+            parents = select_parents(population, fitness_scores, int(len(population) * survival_rate))
+            next_gen = []
+            while len(next_gen) < len(population):
+                parent1, parent2 = random.sample(parents, 2)
+                child1, child2 = crossover(parent1, parent2, masked_regions)
+                next_gen.append(mutate(child1, mask_indices, mutation_rate))
+                next_gen.append(mutate(child2, mask_indices, mutation_rate))
+            
+            # Update the island population
+            islands[island_index] = next_gen[:len(population)]
+
+        # Perform migration between islands at set intervals
+        if (gen + 1) % migration_interval == 0:
+            migrate_between_islands(islands, num_migrants)
+
         if print_progress:
             print(f"Generation {gen+1} | Best TX rate: {best_prediction:.4f} | Target TX rate: {target_expression} | Sequence: {best_sequence}")
-        
-        # Early stopping if close to target
-        if abs(best_prediction - target_expression) < precision:
-            if print_progress:
-                print("Early stopping as target TX rate is achieved.")
-            break
-
-        # Select parents and create next generation
-        parents = select_parents(population, fitness_scores, pop_size // 2)
-        next_gen = []
-        while len(next_gen) < pop_size:
-            parent1, parent2 = random.sample(parents, 2)
-            child1, child2 = crossover(parent1, parent2, masked_regions)
-            next_gen.append(mutate(child1, mask_indices, base_mutation_rate))
-            next_gen.append(mutate(child2, mask_indices, base_mutation_rate))
-        
-        population = next_gen
 
     return best_sequence, best_prediction
 
@@ -136,15 +187,20 @@ if __name__ == '__main__':
     generations = 100
     base_mutation_rate = 0.1
     precision = 0.001
+    num_islands = 4  # Number of islands/sub-populations
+    migration_interval = 10  # Interval for migration between islands
+    num_migrants = 2  # Number of individuals migrating between islands
 
     # Initialize CNN and device
     device = get_device()
     cnn = load_model(path_to_cnn)
 
-    # Run GA to infill masked sequence
+    # Run the genetic algorithm with islands
     best_sequence, best_prediction = genetic_algorithm(
-        cnn, masked_sequence, target_expression, pop_size=pop_size, generations=generations, base_mutation_rate=base_mutation_rate, precision=precision
+        cnn, masked_sequence, target_expression, pop_size=pop_size, generations=generations, base_mutation_rate=base_mutation_rate,
+        precision=precision, num_islands=num_islands, migration_interval=migration_interval, num_migrants=num_migrants
     )
 
     print("\nBest infilled sequence:", best_sequence)
     print("Predicted transcription rate:", best_prediction)
+

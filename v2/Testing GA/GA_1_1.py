@@ -12,7 +12,7 @@ import torch
 import numpy as np
 import random
 import re
-from keras.models import load_model
+from keras.models import load_model  # type: ignore
 
 def get_device():
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')

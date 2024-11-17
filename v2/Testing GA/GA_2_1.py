@@ -6,7 +6,17 @@ from keras.models import load_model  # type: ignore
 
 
 class GeneticAlgorithm:
-    def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100, base_mutation_rate=0.1, precision=0.01, print_progress=True):
+    """
+    This class performs genetic algorithm to infill a masked sequence with nucleotides that maximize the predicted transcription rate.
+    The fitness of each individual is calculated as the negative absolute difference between the predicted transcription rate and the target rate.
+    The surviving population is selected using tournament selection, and the next generation is created using crossover and mutation.
+
+    This approach considers just the infilled sequence as the chromosome, not the entire sequence. The infill is mutated, crossed over, and then
+    the entire sequence is reconstructed before the sequence is selected based on fitness.
+
+    """
+
+    def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100, base_mutation_rate=0.1, precision=0.01, chromosomes=1, print_progress=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
@@ -16,9 +26,11 @@ class GeneticAlgorithm:
         self.generations = generations
         self.base_mutation_rate = base_mutation_rate
         self.precision = precision
+        self.chromosomes = chromosomes
         self.print_progress = print_progress
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
+        self.chromosome_lengths = self._split_chromosome_lengths(self.mask_length, chromosomes)
         self.best_infill = None
         self.best_fitness = -float('inf')
         self.best_prediction = None
@@ -42,6 +54,27 @@ class GeneticAlgorithm:
     @staticmethod
     def find_masked_regions(sequence):
         return [(m.start(), m.end()) for m in re.finditer('N+', sequence)]
+
+    def _split_chromosome_lengths(self, total_length, chromosomes):
+        """Split the mask length into chromosome lengths."""
+        base_length = total_length // chromosomes
+        lengths = [base_length] * chromosomes
+        for i in range(total_length % chromosomes):
+            lengths[i] += 1
+        return lengths
+
+    def _split_into_chromosomes(self, infill):
+        """Split an infill string into separate chromosomes."""
+        chromosomes = []
+        start = 0
+        for length in self.chromosome_lengths:
+            chromosomes.append(infill[start:start + length])
+            start += length
+        return chromosomes
+
+    def _merge_chromosomes(self, chromosomes):
+        """Merge chromosomes into a single string."""
+        return ''.join(chromosomes)
 
     @staticmethod
     def initialize_infills(mask_length, pop_size):
@@ -78,13 +111,21 @@ class GeneticAlgorithm:
             parents.append(population[winner])
         return parents
 
-    @staticmethod
-    def crossover(parent1, parent2):
-        child1, child2 = list(parent1), list(parent2)
-        if len(parent1) > 1:
-            crossover_point = random.randint(1, len(parent1) - 1)
-            child1[crossover_point:], child2[crossover_point:] = parent2[crossover_point:], parent1[crossover_point:]
-        return ''.join(child1), ''.join(child2)
+    def crossover(self, parent1, parent2):
+        """Perform crossover on two infills by splitting them into chromosomes."""
+        chromosomes1 = self._split_into_chromosomes(parent1)
+        chromosomes2 = self._split_into_chromosomes(parent2)
+        child1_chromosomes, child2_chromosomes = [], []
+
+        for c1, c2 in zip(chromosomes1, chromosomes2):
+            child1, child2 = list(c1), list(c2)
+            if len(c1) > 1:
+                crossover_point = random.randint(1, len(c1) - 1)
+                child1[crossover_point:], child2[crossover_point:] = c2[crossover_point:], c1[crossover_point:]
+            child1_chromosomes.append(''.join(child1))
+            child2_chromosomes.append(''.join(child2))
+
+        return self._merge_chromosomes(child1_chromosomes), self._merge_chromosomes(child2_chromosomes)
 
     @staticmethod
     def mutate(infill, mutation_rate=0.1):
@@ -141,6 +182,7 @@ if __name__ == '__main__':
         generations=100,
         base_mutation_rate=0.1,
         precision=0.001,
+        chromosomes=3,
         print_progress=True
     )
     best_sequence, best_prediction = ga.run()

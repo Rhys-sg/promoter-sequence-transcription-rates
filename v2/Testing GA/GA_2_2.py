@@ -10,14 +10,16 @@ class GeneticAlgorithm:
     This class performs genetic algorithm to infill a masked sequence with nucleotides that maximize the predicted transcription rate.
     The fitness of each individual is calculated as the negative absolute difference between the predicted transcription rate and the target rate.
     The surviving population is selected using tournament selection, and the next generation is created using crossover and mutation.
-    It considers just the infilled sequence, not the entire sequence. The infill is mutated, crossed over, and then the entire sequence is
-    reconstructed before the sequence is selected based on fitness.
+    It considers just the infilled sequence, not the entire sequence. It splits the infill into multiple chromosomes, each filled independently
+    using crossover and mutation operations. Then the sequence is reconstructed and selected based on fitness.
 
-    This version splits the masked sequence into multiple chromosomes, each filled independently using crossover and mutation operations.
+    This version splits the population into multiple "islands" with independent evolutionary paths to explore the search space more effectively.
+    This also includes parameters for the "gene_flow_rate" between islands to maintain diversity and prevent premature convergence.
 
     """
 
-    def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100, base_mutation_rate=0.1, precision=0.01, chromosomes=1, print_progress=True):
+    def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100, 
+                 base_mutation_rate=0.1, precision=0.01, chromosomes=1, islands=1, gene_flow_rate=0.1, print_progress=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
@@ -28,13 +30,16 @@ class GeneticAlgorithm:
         self.base_mutation_rate = base_mutation_rate
         self.precision = precision
         self.chromosomes = chromosomes
+        self.islands = islands
+        self.gene_flow_rate = gene_flow_rate
         self.print_progress = print_progress
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
         self.chromosome_lengths = self._split_chromosome_lengths(self.mask_length, chromosomes)
-        self.best_infill = None
-        self.best_fitness = -float('inf')
-        self.best_prediction = None
+        self.island_populations = [self.initialize_infills(self.mask_length, pop_size // islands) for _ in range(islands)]
+        self.best_island_sequences = [None] * islands
+        self.best_island_fitnesses = [-float('inf')] * islands
+        self.best_island_predictions = [None] * islands
 
     @staticmethod
     def get_device():
@@ -136,38 +141,61 @@ class GeneticAlgorithm:
                 infill[i] = random.choice(['A', 'C', 'G', 'T'])
         return ''.join(infill)
 
+    def gene_flow(self):
+        """Perform gene flow between islands."""
+        for i in range(self.islands):
+            if self.islands > 1:
+                # Select a random island to exchange individuals with
+                donor_island = random.choice([j for j in range(self.islands) if j != i])
+                num_individuals = int(self.gene_flow_rate * len(self.island_populations[i]))
+
+                # Select individuals to migrate
+                migrants_to_island = random.sample(self.island_populations[donor_island], num_individuals)
+                migrants_from_island = random.sample(self.island_populations[i], num_individuals)
+
+                # Exchange individuals
+                self.island_populations[i].extend(migrants_to_island)
+                self.island_populations[donor_island].extend(migrants_from_island)
+
+                # Ensure populations do not exceed original size
+                self.island_populations[i] = random.sample(self.island_populations[i], len(self.island_populations[i]) - num_individuals)
+                self.island_populations[donor_island] = random.sample(self.island_populations[donor_island], len(self.island_populations[donor_island]) - num_individuals)
+
     def run(self):
-        infills = self.initialize_infills(self.mask_length, self.pop_size)
-
         for gen in range(self.generations):
-            fitness_scores, predictions = self.evaluate_population(infills)
+            for i, infills in enumerate(self.island_populations):
+                fitness_scores, predictions = self.evaluate_population(infills)
 
-            best_idx = np.argmax(fitness_scores)
-            if fitness_scores[best_idx] > self.best_fitness:
-                self.best_fitness = fitness_scores[best_idx]
-                self.best_infill = infills[best_idx]
-                self.best_prediction = predictions[best_idx]
+                best_idx = np.argmax(fitness_scores)
+                if fitness_scores[best_idx] > self.best_island_fitnesses[i]:
+                    self.best_island_fitnesses[i] = fitness_scores[best_idx]
+                    self.best_island_sequences[i] = infills[best_idx]
+                    self.best_island_predictions[i] = predictions[best_idx]
 
-            if self.print_progress:
-                best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_infill, self.mask_indices)
-                print(f"Generation {gen+1} | Best TX rate: {self.best_prediction:.4f} | Target TX rate: {self.target_expression} | Sequence: {best_sequence}")
-
-            if abs(self.best_prediction - self.target_expression) < self.precision:
                 if self.print_progress:
-                    print("Early stopping as target TX rate is achieved.")
-                break
+                    best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[i], self.mask_indices)
+                    print(f"Island {i+1}, Generation {gen+1} | Best TX rate: {self.best_island_predictions[i]:.4f} | Target TX rate: {self.target_expression} | Sequence: {best_sequence}")
 
-            parents = self.select_parents(infills, fitness_scores, self.pop_size // 2)
-            next_gen = []
-            while len(next_gen) < self.pop_size:
-                parent1, parent2 = random.sample(parents, 2)
-                child1, child2 = self.crossover(parent1, parent2)
-                next_gen.append(self.mutate(child1, self.base_mutation_rate))
-                next_gen.append(self.mutate(child2, self.base_mutation_rate))
-            infills = next_gen
+                if abs(self.best_island_predictions[i] - self.target_expression) < self.precision:
+                    if self.print_progress:
+                        print(f"Island {i+1}: Early stopping as target TX rate is achieved.")
+                    continue
 
-        best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_infill, self.mask_indices)
-        return best_sequence, self.best_prediction
+                parents = self.select_parents(infills, fitness_scores, self.pop_size // (2 * self.islands))
+                next_gen = []
+                while len(next_gen) < len(infills):
+                    parent1, parent2 = random.sample(parents, 2)
+                    child1, child2 = self.crossover(parent1, parent2)
+                    next_gen.append(self.mutate(child1, self.base_mutation_rate))
+                    next_gen.append(self.mutate(child2, self.base_mutation_rate))
+                self.island_populations[i] = next_gen[:len(infills)]
+
+            # Perform gene flow between islands
+            self.gene_flow()
+
+        overall_best_idx = np.argmax(self.best_island_fitnesses)
+        best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[overall_best_idx], self.mask_indices)
+        return best_sequence, self.best_island_predictions[overall_best_idx]
 
 
 if __name__ == '__main__':
@@ -179,11 +207,13 @@ if __name__ == '__main__':
         cnn_model_path=cnn_model_path,
         masked_sequence=masked_sequence,
         target_expression=target_expression,
-        pop_size=100,
+        pop_size=300,
         generations=100,
         base_mutation_rate=0.1,
         precision=0.001,
         chromosomes=3,
+        islands=3,
+        gene_flow_rate=0.5,
         print_progress=True
     )
     best_sequence, best_prediction = ga.run()

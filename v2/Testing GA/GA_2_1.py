@@ -10,9 +10,10 @@ class GeneticAlgorithm:
     This class performs genetic algorithm to infill a masked sequence with nucleotides that maximize the predicted transcription rate.
     The fitness of each individual is calculated as the negative absolute difference between the predicted transcription rate and the target rate.
     The surviving population is selected using tournament selection, and the next generation is created using crossover and mutation.
+    It considers just the infilled sequence, not the entire sequence. The infill is mutated, crossed over, and then the entire sequence is
+    reconstructed before the sequence is selected based on fitness.
 
-    This approach considers just the infilled sequence as the chromosome, not the entire sequence. The infill is mutated, crossed over, and then
-    the entire sequence is reconstructed before the sequence is selected based on fitness.
+    This version splits the masked sequence into multiple chromosomes, each filled independently using crossover and mutation operations.
 
     """
 

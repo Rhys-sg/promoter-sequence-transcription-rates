@@ -10,16 +10,17 @@ class GeneticAlgorithm:
     This class performs genetic algorithm to infill a masked sequence with nucleotides that maximize the predicted transcription rate.
     The fitness of each individual is calculated as the negative absolute difference between the predicted transcription rate and the target rate.
     The surviving population is selected using tournament selection, and the next generation is created using crossover and mutation.
-    It considers just the infilled sequence, not the entire sequence. It splits the infill into multiple chromosomes, each filled independently
-    using crossover and mutation operations. Then the sequence is reconstructed and selected based on fitness.
+    It considers just the infilled sequence, not the entire sequence. The infill is mutated, crossed over, and then the entire sequence is
+    reconstructed before the sequence is selected based on fitness.
 
-    This version splits the population into multiple "islands" with independent evolutionary paths to explore the search space more effectively.
-    This also includes parameters for the "gene_flow_rate" between islands to maintain diversity and prevent premature convergence.
+    The masked sequence is split into multiple chromosomes, each filled independently using crossover and mutation operations.
+    During crossover, each chromosome from "num_parents" parents are crossed over independently, and the resulting child chromosomes are merged to form the child sequences.
+    The population is divided into multiple islands, each evolving independently with occasional gene flow between them.
 
     """
 
     def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100, 
-                 base_mutation_rate=0.1, precision=0.01, chromosomes=1, islands=1, gene_flow_rate=0.1, print_progress=True):
+                 base_mutation_rate=0.1, precision=0.01, chromosomes=1, islands=1, num_parents=2, num_competitors=5, gene_flow_rate=0.1, print_progress=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
@@ -31,6 +32,9 @@ class GeneticAlgorithm:
         self.precision = precision
         self.chromosomes = chromosomes
         self.islands = islands
+        self.num_survivors = self.pop_size // (2 * self.islands)
+        self.num_parents = min(num_parents, self.num_survivors) # Ensure num_parents is not larger than num_survivors
+        self.num_competitors = min(num_competitors, self.num_survivors) # Ensure num_competitors is not larger than num_survivors
         self.gene_flow_rate = gene_flow_rate
         self.print_progress = print_progress
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
@@ -109,29 +113,22 @@ class GeneticAlgorithm:
         return fitness_scores, predictions
 
     @staticmethod
-    def select_parents(population, fitness_scores, num_parents):
+    def select_parents(population, fitness_scores, num_survivors, num_competitors):
         parents = []
-        for _ in range(num_parents):
-            competitors = random.sample(range(len(population)), k=5)
+        for _ in range(num_survivors):
+            competitors = random.sample(range(len(population)), k=num_competitors)
             winner = max(competitors, key=lambda idx: fitness_scores[idx])
             parents.append(population[winner])
         return parents
 
-    def crossover(self, parent1, parent2):
-        """Perform crossover on two infills by splitting them into chromosomes."""
-        chromosomes1 = self._split_into_chromosomes(parent1)
-        chromosomes2 = self._split_into_chromosomes(parent2)
-        child1_chromosomes, child2_chromosomes = [], []
-
-        for c1, c2 in zip(chromosomes1, chromosomes2):
-            child1, child2 = list(c1), list(c2)
-            if len(c1) > 1:
-                crossover_point = random.randint(1, len(c1) - 1)
-                child1[crossover_point:], child2[crossover_point:] = c2[crossover_point:], c1[crossover_point:]
-            child1_chromosomes.append(''.join(child1))
-            child2_chromosomes.append(''.join(child2))
-
-        return self._merge_chromosomes(child1_chromosomes), self._merge_chromosomes(child2_chromosomes)
+    def crossover(self, parents):
+        parent_chromosomes = [self._split_into_chromosomes(parent) for parent in parents]
+        child_chromosomes = []
+        for chrom_idx in range(len(parent_chromosomes[0])):
+            chrom_slices = [parent[chrom_idx] for parent in parent_chromosomes]
+            child_chromosome = ''.join(random.choice(chrom_slices)[i] for i in range(len(chrom_slices[0])))
+            child_chromosomes.append(child_chromosome)
+        return self._merge_chromosomes(child_chromosomes)
 
     @staticmethod
     def mutate(infill, mutation_rate=0.1):
@@ -142,24 +139,25 @@ class GeneticAlgorithm:
         return ''.join(infill)
 
     def gene_flow(self):
-        """Perform gene flow between islands."""
+        if self.islands == 1 or self.gene_flow_rate == 0:
+            return
+        
         for i in range(self.islands):
-            if self.islands > 1:
-                # Select a random island to exchange individuals with
-                donor_island = random.choice([j for j in range(self.islands) if j != i])
-                num_individuals = int(self.gene_flow_rate * len(self.island_populations[i]))
+            # Select a random island to exchange individuals with
+            donor_island = random.choice([j for j in range(self.islands) if j != i])
+            num_individuals = int(self.gene_flow_rate * len(self.island_populations[i]))
 
-                # Select individuals to migrate
-                migrants_to_island = random.sample(self.island_populations[donor_island], num_individuals)
-                migrants_from_island = random.sample(self.island_populations[i], num_individuals)
+            # Select individuals to migrate
+            migrants_to_island = random.sample(self.island_populations[donor_island], num_individuals)
+            migrants_from_island = random.sample(self.island_populations[i], num_individuals)
 
-                # Exchange individuals
-                self.island_populations[i].extend(migrants_to_island)
-                self.island_populations[donor_island].extend(migrants_from_island)
+            # Exchange individuals
+            self.island_populations[i].extend(migrants_to_island)
+            self.island_populations[donor_island].extend(migrants_from_island)
 
-                # Ensure populations do not exceed original size
-                self.island_populations[i] = random.sample(self.island_populations[i], len(self.island_populations[i]) - num_individuals)
-                self.island_populations[donor_island] = random.sample(self.island_populations[donor_island], len(self.island_populations[donor_island]) - num_individuals)
+            # Ensure populations do not exceed original size
+            self.island_populations[i] = random.sample(self.island_populations[i], len(self.island_populations[i]) - num_individuals)
+            self.island_populations[donor_island] = random.sample(self.island_populations[donor_island], len(self.island_populations[donor_island]) - num_individuals)
 
     def run(self):
         for gen in range(self.generations):
@@ -181,13 +179,12 @@ class GeneticAlgorithm:
                         print(f"Island {i+1}: Early stopping as target TX rate is achieved.")
                     continue
 
-                parents = self.select_parents(infills, fitness_scores, self.pop_size // (2 * self.islands))
+                parents = self.select_parents(infills, fitness_scores, self.num_survivors, self.num_competitors)
                 next_gen = []
                 while len(next_gen) < len(infills):
-                    parent1, parent2 = random.sample(parents, 2)
-                    child1, child2 = self.crossover(parent1, parent2)
-                    next_gen.append(self.mutate(child1, self.base_mutation_rate))
-                    next_gen.append(self.mutate(child2, self.base_mutation_rate))
+                    selected_parents = random.sample(parents, self.num_parents)
+                    child = self.crossover(selected_parents)
+                    next_gen.append(self.mutate(child, self.base_mutation_rate))
                 self.island_populations[i] = next_gen[:len(infills)]
 
             # Perform gene flow between islands
@@ -207,12 +204,12 @@ if __name__ == '__main__':
         cnn_model_path=cnn_model_path,
         masked_sequence=masked_sequence,
         target_expression=target_expression,
-        pop_size=300,
+        pop_size=100,
         generations=100,
         base_mutation_rate=0.1,
         precision=0.001,
         chromosomes=3,
-        islands=3,
+        islands=2,
         gene_flow_rate=0.5,
         print_progress=True
     )

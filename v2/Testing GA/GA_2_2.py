@@ -32,9 +32,9 @@ class GeneticAlgorithm:
         self.precision = precision
         self.chromosomes = chromosomes
         self.islands = islands
-        self.num_survivors = self.pop_size // (2 * self.islands)
-        self.num_parents = min(num_parents, self.num_survivors) # Ensure num_parents is not larger than num_survivors
-        self.num_competitors = min(num_competitors, self.num_survivors) # Ensure num_competitors is not larger than num_survivors
+        self.island_pop = max(1, self.pop_size // (2 * self.islands)) # Ensure island_pop is at least 1
+        self.num_parents = min(num_parents, self.island_pop) # Ensure num_parents is not larger than island_pop
+        self.num_competitors = min(num_competitors, self.island_pop) # Ensure num_competitors is not larger than island_pop
         self.gene_flow_rate = gene_flow_rate
         self.print_progress = print_progress
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
@@ -113,9 +113,9 @@ class GeneticAlgorithm:
         return fitness_scores, predictions
 
     @staticmethod
-    def select_parents(population, fitness_scores, num_survivors, num_competitors):
+    def select_parents(population, fitness_scores, island_pop, num_competitors):
         parents = []
-        for _ in range(num_survivors):
+        for _ in range(island_pop):
             competitors = random.sample(range(len(population)), k=num_competitors)
             winner = max(competitors, key=lambda idx: fitness_scores[idx])
             parents.append(population[winner])
@@ -124,7 +124,7 @@ class GeneticAlgorithm:
     def crossover(self, parents):
         parent_chromosomes = [self._split_into_chromosomes(parent) for parent in parents]
         child_chromosomes = []
-        for chrom_idx in range(len(parent_chromosomes[0])):
+        for chrom_idx in range(len(parent_chromosomes[0])): # SHOULD NOT WORK WITH DIFFERENT CHROMOSOME LENGTHS
             chrom_slices = [parent[chrom_idx] for parent in parent_chromosomes]
             child_chromosome = ''.join(random.choice(chrom_slices)[i] for i in range(len(chrom_slices[0])))
             child_chromosomes.append(child_chromosome)
@@ -179,7 +179,7 @@ class GeneticAlgorithm:
                         print(f"Island {i+1}: Early stopping as target TX rate is achieved.")
                     continue
 
-                parents = self.select_parents(infills, fitness_scores, self.num_survivors, self.num_competitors)
+                parents = self.select_parents(infills, fitness_scores, self.island_pop, self.num_competitors)
                 next_gen = []
                 while len(next_gen) < len(infills):
                     selected_parents = random.sample(parents, self.num_parents)

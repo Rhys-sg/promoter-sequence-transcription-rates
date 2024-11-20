@@ -20,7 +20,8 @@ class GeneticAlgorithm:
     """
 
     def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100, 
-                 base_mutation_rate=0.1, precision=0.01, chromosomes=1, islands=1, num_parents=2, num_competitors=5, gene_flow_rate=0.1, print_progress=True):
+                 base_mutation_rate=0.1, precision=0.01, chromosomes=1, islands=1, num_parents=2, num_competitors=5, gene_flow_rate=0.1,
+                 print_progress=True, early_stopping=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
@@ -37,6 +38,7 @@ class GeneticAlgorithm:
         self.num_competitors = min(num_competitors, self.island_pop) # Ensure num_competitors is not larger than island_pop
         self.gene_flow_rate = gene_flow_rate
         self.print_progress = print_progress
+        self.early_stopping = early_stopping
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
         self.chromosome_lengths = self._split_chromosome_lengths(self.mask_length, chromosomes)
@@ -174,7 +176,7 @@ class GeneticAlgorithm:
                     best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[i], self.mask_indices)
                     print(f"Island {i+1}, Generation {gen+1} | Best TX rate: {self.best_island_predictions[i]:.4f} | Target TX rate: {self.target_expression} | Sequence: {best_sequence}")
 
-                if abs(self.best_island_predictions[i] - self.target_expression) < self.precision:
+                if self.early_stopping and abs(self.best_island_predictions[i] - self.target_expression) < self.precision:
                     if self.print_progress:
                         print(f"Island {i+1}: Early stopping as target TX rate is achieved.")
                     continue

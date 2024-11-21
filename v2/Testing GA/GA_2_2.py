@@ -21,7 +21,7 @@ class GeneticAlgorithm:
 
     def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100, 
                  base_mutation_rate=0.1, precision=0.01, chromosomes=1, islands=1, num_parents=2, num_competitors=5, gene_flow_rate=0.1,
-                 print_progress=True, early_stopping=True):
+                 pop_parents=False, print_progress=True, early_stopping=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
@@ -37,6 +37,7 @@ class GeneticAlgorithm:
         self.num_parents = min(num_parents, self.island_pop) # Ensure num_parents is not larger than island_pop
         self.num_competitors = min(num_competitors, self.island_pop) # Ensure num_competitors is not larger than island_pop
         self.gene_flow_rate = gene_flow_rate
+        self.pop_parents = pop_parents
         self.print_progress = print_progress
         self.early_stopping = early_stopping
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
@@ -113,15 +114,35 @@ class GeneticAlgorithm:
             predictions = self.cnn(one_hot_tensor).cpu().numpy().flatten()
         fitness_scores = -np.abs(predictions - self.target_expression)
         return fitness_scores, predictions
+    
+    def select_parents(self, population, fitness_scores, island_pop, num_competitors):
+        if self.pop_parents:
+            return self._select_parents_pop(population, fitness_scores, island_pop, num_competitors)
+        else:
+            return self._select_parents(population, fitness_scores, island_pop, num_competitors)
 
     @staticmethod
-    def select_parents(population, fitness_scores, island_pop, num_competitors):
+    def _select_parents(population, fitness_scores, island_pop, num_competitors):
         parents = []
         for _ in range(island_pop):
             competitors = random.sample(range(len(population)), k=num_competitors)
             winner = max(competitors, key=lambda idx: fitness_scores[idx])
             parents.append(population[winner])
         return parents
+    
+    @staticmethod
+    def _select_parents_pop(population, fitness_scores, island_pop, num_competitors):
+        remaining_population = list(population)
+        remaining_fitness_scores = list(fitness_scores)
+        parents = []
+        for _ in range(island_pop):
+            competitors = random.sample(range(len(remaining_population)), k=num_competitors)
+            winner_idx = max(competitors, key=lambda idx: remaining_fitness_scores[idx])
+            parents.append(remaining_population[winner_idx])
+            del remaining_population[winner_idx]
+            del remaining_fitness_scores[winner_idx]
+        return parents
+
 
     def crossover(self, parents):
         parent_chromosomes = [self._split_into_chromosomes(parent) for parent in parents]

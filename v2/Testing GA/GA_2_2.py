@@ -126,7 +126,7 @@ class GeneticAlgorithm:
     def crossover(self, parents):
         parent_chromosomes = [self._split_into_chromosomes(parent) for parent in parents]
         child_chromosomes = []
-        for chrom_idx in range(len(parent_chromosomes[0])): # SHOULD NOT WORK WITH DIFFERENT CHROMOSOME LENGTHS
+        for chrom_idx in range(len(parent_chromosomes[0])):
             chrom_slices = [parent[chrom_idx] for parent in parent_chromosomes]
             child_chromosome = ''.join(random.choice(chrom_slices)[i] for i in range(len(chrom_slices[0])))
             child_chromosomes.append(child_chromosome)

@@ -143,7 +143,6 @@ class GeneticAlgorithm:
             del remaining_fitness_scores[winner_idx]
         return parents
 
-
     def crossover(self, parents):
         parent_chromosomes = [self._split_into_chromosomes(parent) for parent in parents]
         child_chromosomes = []

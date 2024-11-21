@@ -83,11 +83,15 @@ class GeneticAlgorithm:
 
     @staticmethod
     def select_parents(population, fitness_scores, num_parents, num_competitors):
+        remaining_population = list(population)
+        remaining_fitness_scores = list(fitness_scores)
         parents = []
         for _ in range(num_parents):
-            competitors = random.sample(range(len(population)), k=num_competitors)
-            winner = max(competitors, key=lambda idx: fitness_scores[idx])
-            parents.append(population[winner])
+            competitors = random.sample(range(len(remaining_population)), k=num_competitors)
+            winner_idx = max(competitors, key=lambda idx: remaining_fitness_scores[idx])
+            parents.append(remaining_population[winner_idx])
+            del remaining_population[winner_idx]
+            del remaining_fitness_scores[winner_idx]
         return parents
 
     @staticmethod

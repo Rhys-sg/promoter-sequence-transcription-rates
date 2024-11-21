@@ -17,23 +17,30 @@ class GeneticAlgorithm:
 
     """
 
-    def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100,
-             base_mutation_rate=0.05, precision=0.01, num_parents=2, num_competitors=5, print_progress=True):
+    def __init__(self, cnn_model_path, masked_sequence, target_expression, pop_size=100, generations=100,
+            base_mutation_rate=0.05, precision=0.01, num_parents=2, num_competitors=5, survival_rate=0.5, seed=None, print_progress=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
         self.target_expression = target_expression
-        self.max_length = max_length
+        self.max_length = 150 # CNN cannot handle sequences longer than 150
         self.pop_size = pop_size
         self.generations = generations
         self.base_mutation_rate = base_mutation_rate
         self.precision = precision
-        self.num_parents = num_parents
+        self.num_parents = min(num_parents, pop_size)
         self.num_competitors = min(num_competitors, pop_size)
+        self.survival_rate = survival_rate
         self.print_progress = print_progress
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
         self.best_infill = None
+        self.seed = seed
+
+        if self.seed is not None:
+            random.seed(self.seed)
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
 
     @staticmethod
     def get_device():
@@ -82,11 +89,11 @@ class GeneticAlgorithm:
         return fitness_scores, predictions
 
     @staticmethod
-    def select_parents(population, fitness_scores, num_parents, num_competitors):
+    def select_parents(population, fitness_scores, pop_size, num_competitors):
         remaining_population = list(population)
         remaining_fitness_scores = list(fitness_scores)
         parents = []
-        for _ in range(num_parents):
+        for _ in range(pop_size):
             competitors = random.sample(range(len(remaining_population)), k=num_competitors)
             winner_idx = max(competitors, key=lambda idx: remaining_fitness_scores[idx])
             parents.append(remaining_population[winner_idx])
@@ -136,7 +143,7 @@ class GeneticAlgorithm:
                     print("Early stopping as target TX rate is achieved.")
                 break
 
-            parents = self.select_parents(infills, fitness_scores, self.num_parents, self.num_competitors)
+            parents = self.select_parents(infills, fitness_scores, int(self.pop_size * self.survival_rate), self.num_competitors)
             next_gen = []
             while len(next_gen) < self.pop_size:
                 parent1, parent2 = random.sample(parents, 2)

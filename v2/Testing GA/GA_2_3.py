@@ -18,7 +18,7 @@ class GeneticAlgorithm:
     """
 
     def __init__(self, cnn_model_path, masked_sequence, target_expression, pop_size=100, generations=100,
-            base_mutation_rate=0.05, precision=0.01, num_parents=2, num_competitors=5, survival_rate=0.5, seed=None, print_progress=True):
+            base_mutation_rate=0.05, precision=0.001, num_parents=2, num_competitors=5, survival_rate=0.5, seed=None, print_progress=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
@@ -172,11 +172,7 @@ if __name__ == '__main__':
     ga = GeneticAlgorithm(
         cnn_model_path=cnn_model_path,
         masked_sequence=masked_sequence,
-        target_expression=target_expression,
-        pop_size=100,
-        generations=100,
-        base_mutation_rate=0.05,
-        precision=0.001,
+        target_expression=0.9,
         print_progress=True
     )
     best_sequences, best_predictions = ga.run(5)

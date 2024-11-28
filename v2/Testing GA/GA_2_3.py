@@ -3,6 +3,7 @@ import numpy as np
 import random
 import re
 from keras.models import load_model  # type: ignore
+import math
 
 
 class GeneticAlgorithm:
@@ -18,7 +19,7 @@ class GeneticAlgorithm:
     """
 
     def __init__(self, cnn_model_path, masked_sequence, target_expression, pop_size=100, generations=100,
-            base_mutation_rate=0.05, precision=0.001, num_parents=2, num_competitors=5, survival_rate=0.5, seed=None, print_progress=True):
+            base_mutation_rate=0.05, precision=0.001, num_parents=20, num_competitors=5, survival_rate=0.5, seed=None, print_progress=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
@@ -28,7 +29,7 @@ class GeneticAlgorithm:
         self.generations = generations
         self.base_mutation_rate = base_mutation_rate
         self.precision = precision
-        self.num_parents = min(num_parents, pop_size)
+        self.num_parents = min(num_parents, pop_size//2)
         self.num_competitors = min(num_competitors, pop_size)
         self.survival_rate = survival_rate
         self.print_progress = print_progress
@@ -87,18 +88,28 @@ class GeneticAlgorithm:
             predictions = self.cnn(one_hot_tensor).cpu().numpy().flatten()
         fitness_scores = -np.abs(predictions - self.target_expression)
         return fitness_scores, predictions
-
+    
     @staticmethod
-    def select_parents(population, fitness_scores, pop_size, num_competitors):
-        remaining_population = list(population)
-        remaining_fitness_scores = list(fitness_scores)
+    def select_parents(population, fitness_scores, surviving_pop, temperature):
+        """
+        Selects parents using Boltzmann selection. 
+        Inspired by simulated annealing, selection is based on a temperature-controlled
+        probability that determines the fitness influence over selection.
+        Initially, less fit individuals have a higher chance, but as the "temperature" decreases,
+        selection favors fitter individuals.
+        """
+        boltzmann_scores = [math.exp(score / temperature) for score in fitness_scores]
+        total_score = sum(boltzmann_scores)
+        probabilities = [score / total_score for score in boltzmann_scores]
         parents = []
-        for _ in range(pop_size):
-            competitors = random.sample(range(len(remaining_population)), k=num_competitors)
-            winner_idx = max(competitors, key=lambda idx: remaining_fitness_scores[idx])
-            parents.append(remaining_population[winner_idx])
-            del remaining_population[winner_idx]
-            del remaining_fitness_scores[winner_idx]
+        for _ in range(surviving_pop):
+            pick = random.uniform(0, 1)
+            cumulative = 0
+            for idx, prob in enumerate(probabilities):
+                cumulative += prob
+                if pick <= cumulative:
+                    parents.append(population[idx])
+                    break
         return parents
 
     @staticmethod
@@ -108,6 +119,18 @@ class GeneticAlgorithm:
             crossover_point = random.randint(1, len(parent1) - 1)
             child1[crossover_point:], child2[crossover_point:] = parent2[crossover_point:], parent1[crossover_point:]
         return ''.join(child1), ''.join(child2)
+    
+    # TODO: Implement multiple-parent crossover. Does it do anything without multiple chromosomes?
+    # @staticmethod
+    # def crossover(parents):
+    #     children = []
+    #     if len(parents[0]) > 1:  # Ensure there's space for crossover
+    #         crossover_point = random.randint(1, len(parents[0]) - 1)
+
+    #         chrom_slices = [parent[chrom_idx] for parent in parent_chromosomes]
+    #         child = ''.join(random.choice(chrom_slices)[i] for i in range(len(chrom_slices[0])))
+    #         children.append(child)
+    #     return children
 
     @staticmethod
     def mutate(infill, mutation_rate=0.1):

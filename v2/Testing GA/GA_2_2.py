@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import random
 import re
+import math
 from keras.models import load_model  # type: ignore
 
 
@@ -19,9 +20,9 @@ class GeneticAlgorithm:
 
     """
 
-    def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=20, generations=100, 
-                 base_mutation_rate=0.1, precision=0.01, chromosomes=1, islands=1, num_parents=2, num_competitors=5, gene_flow_rate=0.1,
-                 pop_parents=False, print_progress=True, early_stopping=True):
+    def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=200, generations=100, 
+                 base_mutation_rate=0.05, precision=0.01, chromosomes=1, islands=1, surval_rate=0.5, num_parents=2, num_competitors=5, gene_flow_rate=0,
+                 selection='tournament', print_progress=True, early_stopping=True):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
@@ -33,11 +34,11 @@ class GeneticAlgorithm:
         self.precision = precision
         self.chromosomes = chromosomes
         self.islands = islands
-        self.island_pop = max(1, self.pop_size // (2 * self.islands)) # Ensure island_pop is at least 1
-        self.num_parents = min(num_parents, self.island_pop) # Ensure num_parents is not larger than island_pop
-        self.num_competitors = min(num_competitors, self.island_pop) # Ensure num_competitors is not larger than island_pop
+        self.surviving_pop = max(1, int((self.pop_size / self.islands) * surval_rate)) # Ensure surviving_pop is at least 1
+        self.num_parents = min(num_parents, self.surviving_pop) # Ensure num_parents is not larger than surviving_pop
+        self.num_competitors = min(num_competitors, self.surviving_pop) # Ensure num_competitors is not larger than surviving_pop
         self.gene_flow_rate = gene_flow_rate
-        self.pop_parents = pop_parents
+        self.selection = selection
         self.print_progress = print_progress
         self.early_stopping = early_stopping
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
@@ -115,42 +116,120 @@ class GeneticAlgorithm:
         fitness_scores = -np.abs(predictions - self.target_expression)
         return fitness_scores, predictions
     
-    def select_parents(self, population, fitness_scores, island_pop, num_competitors):
-        if self.pop_parents:
-            return self._select_parents_pop(population, fitness_scores, island_pop, num_competitors)
-        else:
-            return self._select_parents(population, fitness_scores, island_pop, num_competitors)
-
+    def select_parents(self, population, fitness_scores, surviving_pop, num_competitors):
+        if self.selection == 'tournament':
+            return self._select_parents_tournament(population, fitness_scores, surviving_pop, num_competitors)
+        if self.selection == 'tournament_pop':
+            return self._select_parents_tournament_pop(population, fitness_scores, surviving_pop, num_competitors)
+        if self.selection == 'roulette':
+            return self._select_parents_roulette(population, fitness_scores, surviving_pop)
+        if self.selection == 'rank_based':
+            return self._select_parents_rank_based(population, fitness_scores, surviving_pop)
+        if self.selection == 'truncation':
+            return self._select_parents_truncation(population, fitness_scores, surviving_pop)
+        if self.selection == 'boltzmann':
+            return self._select_parents_boltzmann(population, fitness_scores, surviving_pop, temperature=1)
+        raise ValueError(f"Invalid selection method: {self.selection}")
+            
     @staticmethod
-    def _select_parents(population, fitness_scores, island_pop, num_competitors):
+    def _select_parents_tournament(population, fitness_scores, surviving_pop, num_competitors):
         parents = []
-        for _ in range(island_pop):
+        for _ in range(surviving_pop):
             competitors = random.sample(range(len(population)), k=num_competitors)
             winner = max(competitors, key=lambda idx: fitness_scores[idx])
             parents.append(population[winner])
         return parents
     
     @staticmethod
-    def _select_parents_pop(population, fitness_scores, island_pop, num_competitors):
+    def _select_parents_tournament_pop(population, fitness_scores, surviving_pop, num_competitors):
         remaining_population = list(population)
         remaining_fitness_scores = list(fitness_scores)
         parents = []
-        for _ in range(island_pop):
+        for _ in range(surviving_pop):
             competitors = random.sample(range(len(remaining_population)), k=num_competitors)
             winner_idx = max(competitors, key=lambda idx: remaining_fitness_scores[idx])
             parents.append(remaining_population[winner_idx])
             del remaining_population[winner_idx]
             del remaining_fitness_scores[winner_idx]
         return parents
+    
+    @staticmethod
+    def _select_parents_roulette(population, fitness_scores, surviving_pop):
+        total_fitness = sum(fitness_scores)
+        probabilities = [score / total_fitness for score in fitness_scores]
+        parents = []
+        for _ in range(surviving_pop):
+            pick = random.uniform(0, 1)
+            cumulative = 0
+            for idx, prob in enumerate(probabilities):
+                cumulative += prob
+                if pick <= cumulative:
+                    parents.append(population[idx])
+                    break
+        return parents
+    
+    @staticmethod
+    def _select_parents_rank_based(population, fitness_scores, surviving_pop):
+        sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx])
+        ranks = {idx: rank + 1 for rank, idx in enumerate(sorted_indices)}
+        total_rank = sum(ranks.values())
+        probabilities = [ranks[idx] / total_rank for idx in range(len(population))]
+        parents = []
+        for _ in range(surviving_pop):
+            pick = random.uniform(0, 1)
+            cumulative = 0
+            for idx, prob in enumerate(probabilities):
+                cumulative += prob
+                if pick <= cumulative:
+                    parents.append(population[idx])
+                    break
+        return parents
+    
+    @staticmethod
+    def _select_parents_truncation(population, fitness_scores, surviving_pop):
+        sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx], reverse=True)
+        parents = [population[idx] for idx in sorted_indices[:surviving_pop]]
+        return parents
+    
+    @staticmethod
+    def _select_parents_boltzmann(population, fitness_scores, surviving_pop, temperature):
+        boltzmann_scores = [math.exp(score / temperature) for score in fitness_scores]
+        total_score = sum(boltzmann_scores)
+        probabilities = [score / total_score for score in boltzmann_scores]
+        parents = []
+        for _ in range(surviving_pop):
+            pick = random.uniform(0, 1)
+            cumulative = 0
+            for idx, prob in enumerate(probabilities):
+                cumulative += prob
+                if pick <= cumulative:
+                    parents.append(population[idx])
+                    break
+        return parents
 
-    def crossover(self, parents):
+    def recombination(self, parents):
         parent_chromosomes = [self._split_into_chromosomes(parent) for parent in parents]
         child_chromosomes = []
         for chrom_idx in range(len(parent_chromosomes[0])):
             chrom_slices = [parent[chrom_idx] for parent in parent_chromosomes]
-            child_chromosome = ''.join(random.choice(chrom_slices)[i] for i in range(len(chrom_slices[0])))
+            child_chromosome = self.crossover(chrom_slices)
             child_chromosomes.append(child_chromosome)
+
         return self._merge_chromosomes(child_chromosomes)
+    
+    @staticmethod
+    def crossover(chrom_slices):
+        if len(chrom_slices) == 1:
+            return chrom_slices[0]
+        if len(chrom_slices[0]) == 1:
+            return random.choice(chrom_slices)
+        if len(chrom_slices[0]) == 2:
+            parent1, parent2 = random.sample(chrom_slices, 2)
+            return parent1[:1] + parent2[1:]
+        
+        crossover_point = random.randint(1, len(chrom_slices[0]) - 1)
+        parent1, parent2 = random.sample(chrom_slices, 2)
+        return parent1[:crossover_point] + parent2[crossover_point:]
 
     @staticmethod
     def mutate(infill, mutation_rate=0.1):
@@ -201,11 +280,11 @@ class GeneticAlgorithm:
                         print(f"Island {i+1}: Early stopping as target TX rate is achieved.")
                     continue
 
-                parents = self.select_parents(infills, fitness_scores, self.island_pop, self.num_competitors)
+                parents = self.select_parents(infills, fitness_scores, self.surviving_pop, self.num_competitors)
                 next_gen = []
                 while len(next_gen) < len(infills):
                     selected_parents = random.sample(parents, self.num_parents)
-                    child = self.crossover(selected_parents)
+                    child = self.recombination(selected_parents)
                     next_gen.append(self.mutate(child, self.base_mutation_rate))
                 self.island_populations[i] = next_gen[:len(infills)]
 
@@ -231,8 +310,9 @@ if __name__ == '__main__':
         base_mutation_rate=0.1,
         precision=0.001,
         chromosomes=3,
-        islands=2,
-        gene_flow_rate=0.5,
+        num_parents=1,
+        islands=1,
+        gene_flow_rate=0,
         print_progress=True
     )
     best_sequence, best_prediction = ga.run()

@@ -20,25 +20,44 @@ class GeneticAlgorithm:
 
     """
 
-    def __init__(self, cnn_model_path, masked_sequence, target_expression, max_length=150, pop_size=200, generations=100, 
-                 base_mutation_rate=0.05, precision=0.01, chromosomes=1, islands=1, surval_rate=0.5, num_parents=2, num_competitors=5, gene_flow_rate=0,
-                 selection='tournament', print_progress=True, early_stopping=True):
+    def __init__(
+            self,
+            cnn_model_path,
+            masked_sequence,
+            target_expression,
+            precision=0.001,
+            max_length=150,
+            pop_size=100,
+            generations=100, 
+            base_mutation_rate=0.05,
+            chromosomes=1,
+            islands=1,
+            gene_flow_rate=0.5,
+            surval_rate=0.5,
+            num_parents=2,
+            num_competitors=5,
+            selection='tournament',
+            boltzmann_temperature=1,
+            print_progress=True,
+            early_stopping=True
+    ):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
         self.masked_sequence = masked_sequence
         self.target_expression = target_expression
+        self.precision = precision
         self.max_length = max_length
         self.pop_size = pop_size
         self.generations = generations
         self.base_mutation_rate = base_mutation_rate
-        self.precision = precision
         self.chromosomes = chromosomes
         self.islands = islands
+        self.gene_flow_rate = gene_flow_rate
         self.surviving_pop = max(1, int((self.pop_size / self.islands) * surval_rate)) # Ensure surviving_pop is at least 1
         self.num_parents = min(num_parents, self.surviving_pop) # Ensure num_parents is not larger than surviving_pop
         self.num_competitors = min(num_competitors, self.surviving_pop) # Ensure num_competitors is not larger than surviving_pop
-        self.gene_flow_rate = gene_flow_rate
-        self.selection = selection
+        self.selection_method = self._get_selection_method(selection)
+        self.boltzmann_temperature = boltzmann_temperature
         self.print_progress = print_progress
         self.early_stopping = early_stopping
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
@@ -53,6 +72,19 @@ class GeneticAlgorithm:
     def get_device():
         return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    def _get_selection_method(self, selection):
+        methods = {
+            'tournament': self._select_tournament,
+            'tournament_pop': self._select_tournament_pop,
+            'roulette': self._select_roulette,
+            'rank_based': self._select_rank_based,
+            'truncation': self._select_truncation,
+            'boltzmann': self._select_boltzmann,
+        }
+        if selection not in methods:
+            raise ValueError(f"Invalid selection method: {selection}")
+        return methods[selection]
+    
     @staticmethod
     def one_hot_sequence(seq):
         mapping = {
@@ -115,50 +147,32 @@ class GeneticAlgorithm:
             predictions = self.cnn(one_hot_tensor).cpu().numpy().flatten()
         fitness_scores = -np.abs(predictions - self.target_expression)
         return fitness_scores, predictions
-    
-    def select_parents(self, population, fitness_scores, surviving_pop, num_competitors):
-        if self.selection == 'tournament':
-            return self._select_parents_tournament(population, fitness_scores, surviving_pop, num_competitors)
-        if self.selection == 'tournament_pop':
-            return self._select_parents_tournament_pop(population, fitness_scores, surviving_pop, num_competitors)
-        if self.selection == 'roulette':
-            return self._select_parents_roulette(population, fitness_scores, surviving_pop)
-        if self.selection == 'rank_based':
-            return self._select_parents_rank_based(population, fitness_scores, surviving_pop)
-        if self.selection == 'truncation':
-            return self._select_parents_truncation(population, fitness_scores, surviving_pop)
-        if self.selection == 'boltzmann':
-            return self._select_parents_boltzmann(population, fitness_scores, surviving_pop, temperature=1)
-        raise ValueError(f"Invalid selection method: {self.selection}")
             
-    @staticmethod
-    def _select_parents_tournament(population, fitness_scores, surviving_pop, num_competitors):
+    def _select_tournament(self, population, fitness_scores):
         parents = []
-        for _ in range(surviving_pop):
-            competitors = random.sample(range(len(population)), k=num_competitors)
+        for _ in range(self.surviving_pop):
+            competitors = random.sample(range(len(population)), k=self.num_competitors)
             winner = max(competitors, key=lambda idx: fitness_scores[idx])
             parents.append(population[winner])
         return parents
     
-    @staticmethod
-    def _select_parents_tournament_pop(population, fitness_scores, surviving_pop, num_competitors):
+    def _select_tournament_pop(self, population, fitness_scores):
         remaining_population = list(population)
         remaining_fitness_scores = list(fitness_scores)
         parents = []
-        for _ in range(surviving_pop):
-            competitors = random.sample(range(len(remaining_population)), k=num_competitors)
+        for _ in range(self.surviving_pop):
+            competitors = random.sample(range(len(remaining_population)), k=self.num_competitors)
             winner_idx = max(competitors, key=lambda idx: remaining_fitness_scores[idx])
             parents.append(remaining_population[winner_idx])
             del remaining_population[winner_idx]
             del remaining_fitness_scores[winner_idx]
         return parents
     
-    @staticmethod
-    def _select_parents_roulette(population, fitness_scores, surviving_pop):
+    def _select_roulette(self, population, fitness_scores):
         total_fitness = sum(fitness_scores)
         probabilities = [score / total_fitness for score in fitness_scores]
         parents = []
-        for _ in range(surviving_pop):
+        for _ in range(self.surviving_pop):
             pick = random.uniform(0, 1)
             cumulative = 0
             for idx, prob in enumerate(probabilities):
@@ -168,14 +182,13 @@ class GeneticAlgorithm:
                     break
         return parents
     
-    @staticmethod
-    def _select_parents_rank_based(population, fitness_scores, surviving_pop):
+    def _select_rank_based(self, population, fitness_scores):
         sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx])
         ranks = {idx: rank + 1 for rank, idx in enumerate(sorted_indices)}
         total_rank = sum(ranks.values())
         probabilities = [ranks[idx] / total_rank for idx in range(len(population))]
         parents = []
-        for _ in range(surviving_pop):
+        for _ in range(self.surviving_pop):
             pick = random.uniform(0, 1)
             cumulative = 0
             for idx, prob in enumerate(probabilities):
@@ -185,19 +198,17 @@ class GeneticAlgorithm:
                     break
         return parents
     
-    @staticmethod
-    def _select_parents_truncation(population, fitness_scores, surviving_pop):
+    def _select_truncation(self, population, fitness_scores):
         sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx], reverse=True)
-        parents = [population[idx] for idx in sorted_indices[:surviving_pop]]
+        parents = [population[idx] for idx in sorted_indices[:self.surviving_pop]]
         return parents
     
-    @staticmethod
-    def _select_parents_boltzmann(population, fitness_scores, surviving_pop, temperature):
-        boltzmann_scores = [math.exp(score / temperature) for score in fitness_scores]
+    def _select_boltzmann(self, population, fitness_scores):
+        boltzmann_scores = [math.exp(score / self.boltzmann_temperature) for score in fitness_scores]
         total_score = sum(boltzmann_scores)
         probabilities = [score / total_score for score in boltzmann_scores]
         parents = []
-        for _ in range(surviving_pop):
+        for _ in range(self.surviving_pop):
             pick = random.uniform(0, 1)
             cumulative = 0
             for idx, prob in enumerate(probabilities):
@@ -280,7 +291,7 @@ class GeneticAlgorithm:
                         print(f"Island {i+1}: Early stopping as target TX rate is achieved.")
                     continue
 
-                parents = self.select_parents(infills, fitness_scores, self.surviving_pop, self.num_competitors)
+                parents = self.selection_method(infills, fitness_scores)
                 next_gen = []
                 while len(next_gen) < len(infills):
                     selected_parents = random.sample(parents, self.num_parents)

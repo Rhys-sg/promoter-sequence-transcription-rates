@@ -41,7 +41,8 @@ class GeneticAlgorithm:
             selection='tournament',
             boltzmann_temperature=1,
             print_progress=True,
-            early_stopping=True
+            early_stopping=True,
+            seed=None
     ):
         self.device = self.get_device()
         self.cnn = load_model(cnn_model_path)
@@ -69,6 +70,12 @@ class GeneticAlgorithm:
         self.best_island_sequences = [None] * islands
         self.best_island_fitnesses = [-float('inf')] * islands
         self.best_island_predictions = [None] * islands
+
+        # Set seed for reproducibility
+        if self.seed is not None:
+            random.seed(self.seed)
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
 
     @staticmethod
     def get_device():

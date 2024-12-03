@@ -16,6 +16,7 @@ def test_combination(cnn_model_path, masked_sequence, target_expression, precisi
             target_expression=target_expression,
             precision=precision,
             print_progress=False,
+            seed=run_id,
             **kwargs
         )
         # Time the run

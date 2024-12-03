@@ -34,7 +34,7 @@ class GeneticAlgorithm:
             covariance=0, # not implemented
             elitist_rate=0,
             islands=1,
-            gene_flow_rate=0.5,
+            gene_flow_rate=0,
             surval_rate=0.5,
             num_parents=2,
             num_competitors=5,
@@ -72,10 +72,10 @@ class GeneticAlgorithm:
         self.best_island_predictions = [None] * islands
 
         # Set seed for reproducibility
-        if self.seed is not None:
-            random.seed(self.seed)
-            np.random.seed(self.seed)
-            torch.manual_seed(self.seed)
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
 
     @staticmethod
     def get_device():
@@ -182,10 +182,7 @@ class GeneticAlgorithm:
                 infill[i] = random.choice(['A', 'C', 'G', 'T'])
         return ''.join(infill)
 
-    def gene_flow(self):
-        if self.islands == 1 or self.gene_flow_rate == 0:
-            return
-        
+    def gene_flow(self):        
         for i in range(self.islands):
             # Select a random island to exchange individuals with
             donor_island = random.choice([j for j in range(self.islands) if j != i])
@@ -232,7 +229,8 @@ class GeneticAlgorithm:
                 self.island_populations[i] = next_gen[:len(infills)]
 
             # Perform gene flow between islands
-            self.gene_flow()
+            if self.islands > 1 and self.gene_flow_rate > 0:
+                self.gene_flow()
 
         overall_best_idx = np.argmax(self.best_island_fitnesses)
         best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[overall_best_idx], self.mask_indices)

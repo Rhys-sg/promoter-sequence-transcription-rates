@@ -9,6 +9,7 @@ Parameters:
 * generations
 * base_mutation_rate
 * chromosomes
+* elitist_rate
 * islands
     * gene_flow_rate
 * surval_rate

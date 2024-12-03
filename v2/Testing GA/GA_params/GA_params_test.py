@@ -55,9 +55,7 @@ class GeneticAlgorithm:
         self.gene_flow_rate = gene_flow_rate
         self.surviving_pop = max(1, int((self.pop_size / self.islands) * surval_rate)) # Ensure surviving_pop is at least 1
         self.num_parents = min(num_parents, self.surviving_pop) # Ensure num_parents is not larger than surviving_pop
-        self.num_competitors = min(num_competitors, self.surviving_pop) # Ensure num_competitors is not larger than surviving_pop
-        self.selection_method = self._get_selection_method(selection)
-        self.boltzmann_temperature = boltzmann_temperature
+        self.selection_method = getattr(SelectionMethod(self.surviving_pop, num_competitors, boltzmann_temperature), selection)
         self.print_progress = print_progress
         self.early_stopping = early_stopping
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
@@ -71,19 +69,6 @@ class GeneticAlgorithm:
     @staticmethod
     def get_device():
         return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    def _get_selection_method(self, selection):
-        methods = {
-            'tournament': self._select_tournament,
-            'tournament_pop': self._select_tournament_pop,
-            'roulette': self._select_roulette,
-            'rank_based': self._select_rank_based,
-            'truncation': self._select_truncation,
-            'boltzmann': self._select_boltzmann,
-        }
-        if selection not in methods:
-            raise ValueError(f"Invalid selection method: {selection}")
-        return methods[selection]
     
     @staticmethod
     def one_hot_sequence(seq):
@@ -147,76 +132,6 @@ class GeneticAlgorithm:
             predictions = self.cnn(one_hot_tensor).cpu().numpy().flatten()
         fitness_scores = -np.abs(predictions - self.target_expression)
         return fitness_scores, predictions
-            
-    def _select_tournament(self, population, fitness_scores):
-        parents = []
-        for _ in range(self.surviving_pop):
-            competitors = random.sample(range(len(population)), k=self.num_competitors)
-            winner = max(competitors, key=lambda idx: fitness_scores[idx])
-            parents.append(population[winner])
-        return parents
-    
-    def _select_tournament_pop(self, population, fitness_scores):
-        remaining_population = list(population)
-        remaining_fitness_scores = list(fitness_scores)
-        parents = []
-        for _ in range(self.surviving_pop):
-            competitors = random.sample(range(len(remaining_population)), k=self.num_competitors)
-            winner_idx = max(competitors, key=lambda idx: remaining_fitness_scores[idx])
-            parents.append(remaining_population[winner_idx])
-            del remaining_population[winner_idx]
-            del remaining_fitness_scores[winner_idx]
-        return parents
-    
-    def _select_roulette(self, population, fitness_scores):
-        total_fitness = sum(fitness_scores)
-        probabilities = [score / total_fitness for score in fitness_scores]
-        parents = []
-        for _ in range(self.surviving_pop):
-            pick = random.uniform(0, 1)
-            cumulative = 0
-            for idx, prob in enumerate(probabilities):
-                cumulative += prob
-                if pick <= cumulative:
-                    parents.append(population[idx])
-                    break
-        return parents
-    
-    def _select_rank_based(self, population, fitness_scores):
-        sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx])
-        ranks = {idx: rank + 1 for rank, idx in enumerate(sorted_indices)}
-        total_rank = sum(ranks.values())
-        probabilities = [ranks[idx] / total_rank for idx in range(len(population))]
-        parents = []
-        for _ in range(self.surviving_pop):
-            pick = random.uniform(0, 1)
-            cumulative = 0
-            for idx, prob in enumerate(probabilities):
-                cumulative += prob
-                if pick <= cumulative:
-                    parents.append(population[idx])
-                    break
-        return parents
-    
-    def _select_truncation(self, population, fitness_scores):
-        sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx], reverse=True)
-        parents = [population[idx] for idx in sorted_indices[:self.surviving_pop]]
-        return parents
-    
-    def _select_boltzmann(self, population, fitness_scores):
-        boltzmann_scores = [math.exp(score / self.boltzmann_temperature) for score in fitness_scores]
-        total_score = sum(boltzmann_scores)
-        probabilities = [score / total_score for score in boltzmann_scores]
-        parents = []
-        for _ in range(self.surviving_pop):
-            pick = random.uniform(0, 1)
-            cumulative = 0
-            for idx, prob in enumerate(probabilities):
-                cumulative += prob
-                if pick <= cumulative:
-                    parents.append(population[idx])
-                    break
-        return parents
 
     def recombination(self, parents):
         parent_chromosomes = [self._split_into_chromosomes(parent) for parent in parents]
@@ -305,6 +220,124 @@ class GeneticAlgorithm:
         overall_best_idx = np.argmax(self.best_island_fitnesses)
         best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[overall_best_idx], self.mask_indices)
         return best_sequence, self.best_island_predictions[overall_best_idx]
+    
+class SelectionMethod():
+    """
+    This class implements various selection methods for genetic algorithms and stores selection parameters.
+
+    """
+    def __init__(self, surviving_pop, num_competitors, boltzmann_temperature):
+        self.surviving_pop = surviving_pop
+        self.num_competitors = min(num_competitors, self.surviving_pop) # Ensure num_competitors is not larger than surviving_pop
+        self.boltzmann_temperature = boltzmann_temperature
+    
+    def tournament(self, population, fitness_scores):
+        """A group of individuals is randomly chosen from the population, and the one with the highest fitness is selected."""
+        parents = []
+        for _ in range(self.surviving_pop):
+            competitors = random.sample(range(len(population)), k=self.num_competitors)
+            winner = max(competitors, key=lambda idx: fitness_scores[idx])
+            parents.append(population[winner])
+        return parents
+    
+    def tournament_pop(self, population, fitness_scores):
+        """A group of individuals is randomly chosen from the population, and the one with the highest fitness is selected and removed from future tournaments."""
+        remaining_population = list(population)
+        remaining_fitness_scores = list(fitness_scores)
+        parents = []
+        for _ in range(self.surviving_pop):
+            competitors = random.sample(range(len(remaining_population)), k=self.num_competitors)
+            winner_idx = max(competitors, key=lambda idx: remaining_fitness_scores[idx])
+            parents.append(remaining_population[winner_idx])
+            del remaining_population[winner_idx]
+            del remaining_fitness_scores[winner_idx]
+        return parents
+    
+    def roulette(self, population, fitness_scores):
+        """"Individuals are selected with a probability proportional to their fitness."""
+        total_fitness = sum(fitness_scores)
+        probabilities = [score / total_fitness for score in fitness_scores]
+        parents = []
+        for _ in range(self.surviving_pop):
+            pick = random.uniform(0, 1)
+            cumulative = 0
+            for idx, prob in enumerate(probabilities):
+                cumulative += prob
+                if pick <= cumulative:
+                    parents.append(population[idx])
+                    break
+        return parents
+    
+    def linear_scaling(self, population, fitness_scores):
+        """Fitness scores are normalized, and then roulette selection is performed."""
+        max_fitness = max(fitness_scores)
+        min_fitness = min(fitness_scores)
+        adjusted_scores = [(score - min_fitness) / (max_fitness - min_fitness + 1e-6) for score in fitness_scores]
+        return self.roulette(population, adjusted_scores)
+    
+    def rank_based(self, population, fitness_scores):
+        """Individuals are ranked based on their fitness, and selection probabilities are assigned based on rank rather than absolute fitness."""
+        sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx])
+        ranks = {idx: rank + 1 for rank, idx in enumerate(sorted_indices)}
+        total_rank = sum(ranks.values())
+        probabilities = [ranks[idx] / total_rank for idx in range(len(population))]
+        parents = []
+        for _ in range(self.surviving_pop):
+            pick = random.uniform(0, 1)
+            cumulative = 0
+            for idx, prob in enumerate(probabilities):
+                cumulative += prob
+                if pick <= cumulative:
+                    parents.append(population[idx])
+                    break
+        return parents
+    
+    def sus(self, population, fitness_scores):
+        """
+        Similar to roulette wheel selection, but instead of selecting one individual at a time,
+        Stochastic Universal Sampling (SUS) uses multiple equally spaced pointers to select individuals simultaneously.
+
+        """
+        total_fitness = sum(fitness_scores)
+        probabilities = [score / total_fitness for score in fitness_scores]
+        cumulative_probabilities = [sum(probabilities[:i+1]) for i in range(len(probabilities))]
+        step = 1.0 / self.surviving_pop
+        start = random.uniform(0, step)
+        pointers = [start + i * step for i in range(self.surviving_pop)]
+        
+        parents = []
+        for pointer in pointers:
+            for idx, cumulative in enumerate(cumulative_probabilities):
+                if pointer <= cumulative:
+                    parents.append(population[idx])
+                    break
+        return parents
+    
+    def truncation(self, population, fitness_scores):
+        """Only the top individuals are selected for the next generation."""
+        sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx], reverse=True)
+        parents = [population[idx] for idx in sorted_indices[:self.surviving_pop]]
+        return parents
+    
+    def boltzmann(self, population, fitness_scores):
+        """
+        Based on simulated annealing, this method adjusts selection probabilities dynamically over time,
+        favoring exploration in early generations and exploitation in later generations.
+        
+        """
+        boltzmann_scores = [math.exp(score / self.boltzmann_temperature) for score in fitness_scores]
+        total_score = sum(boltzmann_scores)
+        probabilities = [score / total_score for score in boltzmann_scores]
+        parents = []
+        for _ in range(self.surviving_pop):
+            pick = random.uniform(0, 1)
+            cumulative = 0
+            for idx, prob in enumerate(probabilities):
+                cumulative += prob
+                if pick <= cumulative:
+                    parents.append(population[idx])
+                    break
+        return parents
 
 
 if __name__ == '__main__':

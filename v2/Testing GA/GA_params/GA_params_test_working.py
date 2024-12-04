@@ -7,7 +7,7 @@ from keras.models import load_model  # type: ignore
 
 
 class GeneticAlgorithm:
-    """
+    '''
     This class performs genetic algorithm to infill a masked sequence with nucleotides that maximize the predicted transcription rate.
     The fitness of each individual is calculated as the negative absolute difference between the predicted transcription rate and the target rate.
     The surviving population is selected using tournament selection, and the next generation is created using crossover and mutation.
@@ -15,10 +15,10 @@ class GeneticAlgorithm:
     reconstructed before the sequence is selected based on fitness.
 
     The masked sequence is split into multiple chromosomes, each filled independently using crossover and mutation operations.
-    During crossover, each chromosome from "num_parents" parents are crossed over independently, and the resulting child chromosomes are merged to form the child sequences.
+    During crossover, each chromosome from 'num_parents' parents are crossed over independently, and the resulting child chromosomes are merged to form the child sequences.
     The population is divided into multiple islands, each evolving independently with occasional gene flow between them.
 
-    """
+    '''
 
     def __init__(
             self,
@@ -83,7 +83,7 @@ class GeneticAlgorithm:
         return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     def split_chromosome_lengths(self, total_length, chromosomes):
-        """Split the mask length into chromosome lengths."""
+        '''Split the mask length into chromosome lengths.'''
         base_length = total_length // chromosomes
         lengths = [base_length] * chromosomes
         for i in range(total_length % chromosomes):
@@ -129,12 +129,12 @@ class GeneticAlgorithm:
         return best_sequences, best_predictions
 
 class Lineage:
-    """
+    '''
     This class represents a lineage of individuals that evolve independently in one instance of the genetic algorithm.
     It is used to encapsulate running the algorithm multiple times to evaluate multiple generated sequences.
-    It also uses hamming distance to ensure that subsequent lineage explore untapped sections of the "sequence landscapes"
+    It also uses hamming distance to ensure that subsequent lineage explore untapped sections of the 'sequence landscapes'
     
-    """
+    '''
     def __init__(
             self,
             lineage_i,
@@ -258,7 +258,7 @@ class Lineage:
         return self.merge_chromosomes(child_chromosomes)
     
     def split_into_chromosomes(self, infill):
-        """Split an infill string into separate chromosomes."""
+        '''Split an infill string into separate chromosomes.'''
         chromosomes = []
         start = 0
         for length in self.chromosome_lengths:
@@ -267,7 +267,7 @@ class Lineage:
         return chromosomes
 
     def merge_chromosomes(self, chromosomes):
-        """Merge chromosomes into a single string."""
+        '''Merge chromosomes into a single string.'''
         return ''.join(chromosomes)
     
     @staticmethod
@@ -287,7 +287,7 @@ class Lineage:
     # TODO: implement covariance-based parent selection
     @staticmethod
     def hamming_distance(seq1, seq2):
-        """Calculate the Hamming distance between two sequences.We could alternatively use Needleman-Wunsch or Multiple Sequence Alignment for more complex comparisons."""
+        '''Calculate the Hamming distance between two sequences.We could alternatively use Needleman-Wunsch or Multiple Sequence Alignment for more complex comparisons.'''
         return sum(base1 != base2 for base1, base2 in zip(seq1, seq2))
 
     @staticmethod
@@ -329,11 +329,11 @@ class Lineage:
 
                 if self.print_progress:
                     best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[i], self.mask_indices)
-                    print(f"Lingeage {self.lineage_i+1}, Island {i+1}, Generation {gen+1} | Best TX rate: {self.best_island_predictions[i]:.4f} | Target TX rate: {self.target_expression} | Sequence: {best_sequence}")
+                    print(f'Lingeage {self.lineage_i+1}, Island {i+1}, Generation {gen+1} | Best TX rate: {self.best_island_predictions[i]:.4f} | Target TX rate: {self.target_expression} | Sequence: {best_sequence}')
 
                 if self.early_stopping and abs(self.best_island_predictions[i] - self.target_expression) < self.precision:
                     if self.print_progress:
-                        print(f"Island {i+1}: Early stopping as target TX rate is achieved.")
+                        print(f'Island {i+1}: Early stopping as target TX rate is achieved.')
                     overall_best_idx = np.argmax(self.best_island_fitnesses)
                     best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[overall_best_idx], self.mask_indices)
                     return best_sequence, self.best_island_predictions[overall_best_idx]
@@ -358,16 +358,16 @@ class Lineage:
     
 
 class SelectionMethod():
-    """
+    '''
     This class implements various selection methods for genetic algorithms and stores selection parameters.
-    """
+    '''
     def __init__(self, surviving_pop, elitist_rate, num_competitors, boltzmann_temperature):
         self.elitist_rate = elitist_rate
         self.num_competitors = min(num_competitors, surviving_pop) # Ensure num_competitors is not larger than surviving_pop
         self.boltzmann_temperature = boltzmann_temperature
     
     def tournament(self, population, fitness_scores, surviving_pop):
-        """A group of individuals is randomly chosen from the population, and the one with the highest fitness is selected."""
+        '''A group of individuals is randomly chosen from the population, and the one with the highest fitness is selected.'''
         parents = self.truncation(population, fitness_scores, max(1, int(self.elitist_rate * surviving_pop))) if self.elitist_rate > 0 else []
         for _ in range(surviving_pop):
             competitors = random.sample(range(len(population)), k=self.num_competitors)
@@ -376,7 +376,7 @@ class SelectionMethod():
         return parents
     
     def tournament_pop(self, population, fitness_scores, surviving_pop):
-        """A group of individuals is randomly chosen from the population, and the one with the highest fitness is selected and removed from future tournaments."""
+        '''A group of individuals is randomly chosen from the population, and the one with the highest fitness is selected and removed from future tournaments.'''
         remaining_population = list(population)
         remaining_fitness_scores = list(fitness_scores)
         parents = []
@@ -389,7 +389,7 @@ class SelectionMethod():
         return parents
     
     def roulette(self, population, fitness_scores, surviving_pop):
-        """"Individuals are selected with a probability proportional to their fitness."""
+        ''''Individuals are selected with a probability proportional to their fitness.'''
         total_fitness = sum(fitness_scores)
         probabilities = [score / total_fitness for score in fitness_scores]
         parents = []
@@ -404,14 +404,14 @@ class SelectionMethod():
         return parents
     
     def linear_scaling(self, population, fitness_scores, surviving_pop):
-        """Fitness scores are normalized, and then roulette selection is performed."""
+        '''Fitness scores are normalized, and then roulette selection is performed.'''
         max_fitness = max(fitness_scores)
         min_fitness = min(fitness_scores)
         adjusted_scores = [(score - min_fitness) / (max_fitness - min_fitness + 1e-6) for score in fitness_scores]
         return self.roulette(population, adjusted_scores)
     
     def rank_based(self, population, fitness_scores, surviving_pop):
-        """Individuals are ranked based on their fitness, and selection probabilities are assigned based on rank rather than absolute fitness."""
+        '''Individuals are ranked based on their fitness, and selection probabilities are assigned based on rank rather than absolute fitness.'''
         sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx])
         ranks = {idx: rank + 1 for rank, idx in enumerate(sorted_indices)}
         total_rank = sum(ranks.values())
@@ -428,11 +428,11 @@ class SelectionMethod():
         return parents
     
     def sus(self, population, fitness_scores, surviving_pop):
-        """
+        '''
         Similar to roulette wheel selection, but instead of selecting one individual at a time,
         Stochastic Universal Sampling (SUS) uses multiple equally spaced pointers to select individuals simultaneously.
 
-        """
+        '''
         total_fitness = sum(fitness_scores)
         probabilities = [score / total_fitness for score in fitness_scores]
         cumulative_probabilities = [sum(probabilities[:i+1]) for i in range(len(probabilities))]
@@ -449,20 +449,20 @@ class SelectionMethod():
         return parents
     
     def truncation(self, population, fitness_scores, surviving_pop):
-        """
+        '''
         Only the top individuals are selected for the next generation.
         This method is reused for elitist selection by setting elitist_rate to a value between 0 and 1.
-        """
+        '''
         sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx], reverse=True)
         parents = [population[idx] for idx in sorted_indices[:surviving_pop]]
         return parents
     
     def boltzmann(self, population, fitness_scores, surviving_pop):
-        """
+        '''
         Based on simulated annealing, this method adjusts selection probabilities dynamically over time,
         favoring exploration in early generations and exploitation in later generations.
         
-        """
+        '''
         boltzmann_scores = [math.exp(score / self.boltzmann_temperature) for score in fitness_scores]
         total_score = sum(boltzmann_scores)
         probabilities = [score / total_score for score in boltzmann_scores]
@@ -490,5 +490,5 @@ if __name__ == '__main__':
         islands=2,
     )
     best_sequence, best_prediction = ga.run(2)
-    print("\nBest infilled sequence:", best_sequence)
-    print("Predicted transcription rate:", best_prediction)
+    print('\nBest infilled sequence:', best_sequence)
+    print('Predicted transcription rate:', best_prediction)

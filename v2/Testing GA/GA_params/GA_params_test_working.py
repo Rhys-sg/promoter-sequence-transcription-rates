@@ -31,7 +31,6 @@ class GeneticAlgorithm:
             generations=100, 
             base_mutation_rate=0.05,
             chromosomes=1,
-            covariance=0, # not implemented
             elitist_rate=0,
             islands=1,
             gene_flow_rate=0,
@@ -55,7 +54,6 @@ class GeneticAlgorithm:
         self.generations = generations
         self.base_mutation_rate = base_mutation_rate
         self.chromosomes = chromosomes
-        self.covariance = covariance
         self.elitist_rate = elitist_rate
         self.islands = islands
         self.gene_flow_rate = gene_flow_rate
@@ -90,43 +88,24 @@ class GeneticAlgorithm:
             lengths[i] += 1
         return lengths
     
-    def run(self, lineages=1):
+    def run(self, lineages=1, repeat_avoidance_rate=0):
         best_sequences = []
         best_predictions = []
+        lineage_island_pop_history = []
         for lineage_i in range(lineages):
             lineage = Lineage(
+                self,
                 lineage_i = lineage_i,
-                device = self.device,
-                cnn = load_model(cnn_model_path),
-                masked_sequence = masked_sequence,
-                target_expression = target_expression,
-                precision = self.precision,
-                max_length = self.max_length,
-                pop_size = self.pop_size,
-                generations = self.generations,
-                base_mutation_rate = self.base_mutation_rate,
-                chromosomes = self.chromosomes,
-                covariance = self.covariance,
-                elitist_rate = self.elitist_rate,
-                islands = self.islands,
-                gene_flow_rate = self.gene_flow_rate,
-                surviving_pop = self.surviving_pop,
-                num_parents = self.num_parents,
-                selection_method = self.selection_method,
-                print_progress = self.print_progress,
-                early_stopping = self.early_stopping,
-                mask_indices = self.mask_indices,
-                mask_length = self.mask_length,
-                chromosome_lengths = self.chromosome_lengths,
-                caching = self.caching,
-                seen_sequences = self.seen_sequences,
+                repeat_avoidance_rate = repeat_avoidance_rate,
             )
 
-            best_sequence, best_prediction = lineage.run()
+            # Run the genetic algorithm for the current lineage, record results
+            best_sequence, best_prediction, island_pop_history = lineage.run()
             best_sequences.append(best_sequence)
             best_predictions.append(best_prediction)
-        
-        return best_sequences, best_predictions
+            lineage_island_pop_history.append(island_pop_history)
+
+        return best_sequences, best_predictions, island_pop_history
 
 class Lineage:
     '''
@@ -137,68 +116,23 @@ class Lineage:
     '''
     def __init__(
             self,
+            geneticAlgorithm,
             lineage_i,
-            device,
-            cnn,
-            masked_sequence,
-            target_expression,
-            precision,
-            max_length,
-            pop_size,
-            generations,
-            base_mutation_rate,
-            chromosomes,
-            covariance,
-            elitist_rate,
-            islands,
-            gene_flow_rate,
-            surviving_pop,
-            num_parents,
-            selection_method,
-            print_progress,
-            early_stopping,
-            mask_indices,
-            mask_length,
-            chromosome_lengths,
-            caching,
-            seen_sequences,
+            repeat_avoidance_rate,
     ):
+        self.geneticAlgorithm = geneticAlgorithm
         self.lineage_i = lineage_i
-        self.device = device
-        self.cnn = cnn
-        self.masked_sequence = masked_sequence
-        self.target_expression = target_expression
-        self.precision = precision
-        self.max_length = max_length
-        self.pop_size = pop_size
-        self.generations = generations
-        self.base_mutation_rate = base_mutation_rate
-        self.chromosomes = chromosomes
-        self.covariance = covariance
-        self.elitist_rate = elitist_rate
-        self.islands = islands
-        self.gene_flow_rate = gene_flow_rate
-        self.surviving_pop = surviving_pop
-        self.num_parents = num_parents
-        self.selection_method = selection_method
-        self.print_progress = print_progress
-        self.early_stopping = early_stopping
-        self.mask_indices = mask_indices
-        self.mask_length = mask_length
-        self.chromosome_lengths = chromosome_lengths
+        self.repeat_avoidance_rate = repeat_avoidance_rate
+        self.device = self.geneticAlgorithm.device
 
-        # For tracking and memoization purposes, could use lru_cache instead
-        self.island_pop_history = [[self.initialize_infills(self.mask_length, pop_size // islands) for _ in range(islands)]]
-        self.caching = caching
-        self.seen_sequences = seen_sequences
-        
-        # Initialize population for each island
+        # Initialize population history for each island, starting with the initial population   
+        self.island_pop_history = [[self.initialize_infills(self.geneticAlgorithm.mask_length, self.geneticAlgorithm.pop_size // self.geneticAlgorithm.islands) for _ in range(self.geneticAlgorithm.islands)]]
         self.current_island_pop = self.island_pop_history[0]
 
         # For tracking the best sequence and prediction for each island
-        self.best_island_sequences = [None] * islands
-        self.best_island_fitnesses = [-float('inf')] * islands
-        self.best_island_predictions = [None] * islands
+        self.best_island_sequences = [None] * self.geneticAlgorithm.islands
+        self.best_island_fitnesses = [-float('inf')] * self.geneticAlgorithm.islands
+        self.best_island_predictions = [None] * self.geneticAlgorithm.islands
     
     @staticmethod
     def one_hot_sequence(seq):
@@ -228,23 +162,23 @@ class Lineage:
 
     def evaluate_population(self, infills):
         full_population = [
-            self.reconstruct_sequence(self.masked_sequence, infill, self.mask_indices)
+            self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, infill, self.geneticAlgorithm.mask_indices)
             for infill in infills
         ]
-        if not self.caching:
-            to_evaluate = [seq for seq in full_population if seq not in self.seen_sequences]
+        if not self.geneticAlgorithm.caching:
+            to_evaluate = [seq for seq in full_population if seq not in self.geneticAlgorithm.seen_sequences]
         else:
             to_evaluate = full_population
         if to_evaluate:
-            one_hot_pop = [self.one_hot_sequence(seq.zfill(self.max_length)) for seq in to_evaluate]
+            one_hot_pop = [self.one_hot_sequence(seq.zfill(self.geneticAlgorithm.max_length)) for seq in to_evaluate]
             one_hot_tensor = torch.tensor(np.stack(one_hot_pop), dtype=torch.float32)
             with torch.no_grad():
-                predictions = self.cnn(one_hot_tensor).cpu().numpy().flatten()
-            fitness_scores = -np.abs(predictions - self.target_expression)
+                predictions = self.geneticAlgorithm.cnn(one_hot_tensor).cpu().numpy().flatten()
+            fitness_scores = -np.abs(predictions - self.geneticAlgorithm.target_expression)
             for seq, fitness, pred in zip(to_evaluate, fitness_scores, predictions):
-                self.seen_sequences[seq] = (fitness, pred)
-        fitness_scores = np.array([self.seen_sequences[seq][0] for seq in full_population])
-        predictions = np.array([self.seen_sequences[seq][1] for seq in full_population])
+                self.geneticAlgorithm.seen_sequences[seq] = (fitness, pred)
+        fitness_scores = np.array([self.geneticAlgorithm.seen_sequences[seq][0] for seq in full_population])
+        predictions = np.array([self.geneticAlgorithm.seen_sequences[seq][1] for seq in full_population])
         return fitness_scores, predictions
 
     def recombination(self, parents):
@@ -261,7 +195,7 @@ class Lineage:
         '''Split an infill string into separate chromosomes.'''
         chromosomes = []
         start = 0
-        for length in self.chromosome_lengths:
+        for length in self.geneticAlgorithm.chromosome_lengths:
             chromosomes.append(infill[start:start + length])
             start += length
         return chromosomes
@@ -283,12 +217,6 @@ class Lineage:
         
         crossover_point = random.randint(1, len(chrom_slices[0]) - 1)
         return parent1[:crossover_point] + parent2[crossover_point:]
-    
-    # TODO: implement covariance-based parent selection
-    @staticmethod
-    def hamming_distance(seq1, seq2):
-        '''Calculate the Hamming distance between two sequences.We could alternatively use Needleman-Wunsch or Multiple Sequence Alignment for more complex comparisons.'''
-        return sum(base1 != base2 for base1, base2 in zip(seq1, seq2))
 
     @staticmethod
     def mutate(infill, mutation_rate=0.1):
@@ -299,10 +227,10 @@ class Lineage:
         return ''.join(infill)
 
     def gene_flow(self):        
-        for i in range(self.islands):
+        for i in range(self.geneticAlgorithm.islands):
             # Select a random island to exchange individuals with
-            donor_island = random.choice([j for j in range(self.islands) if j != i])
-            num_individuals = int(self.gene_flow_rate * len(self.current_island_pop[i]))
+            donor_island = random.choice([j for j in range(self.geneticAlgorithm.islands) if j != i])
+            num_individuals = int(self.geneticAlgorithm.gene_flow_rate * len(self.current_island_pop[i]))
 
             # Select individuals to migrate
             migrants_to_island = random.sample(self.current_island_pop[donor_island], num_individuals)
@@ -317,7 +245,7 @@ class Lineage:
             self.current_island_pop[donor_island] = random.sample(self.current_island_pop[donor_island], len(self.current_island_pop[donor_island]) - num_individuals)
 
     def run(self):
-        for gen in range(self.generations):
+        for gen in range(self.geneticAlgorithm.generations):
             for i, infills in enumerate(self.current_island_pop):
                 fitness_scores, predictions = self.evaluate_population(infills)
 
@@ -327,34 +255,37 @@ class Lineage:
                     self.best_island_sequences[i] = infills[best_idx]
                     self.best_island_predictions[i] = predictions[best_idx]
 
-                if self.print_progress:
-                    best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[i], self.mask_indices)
-                    print(f'Lingeage {self.lineage_i+1}, Island {i+1}, Generation {gen+1} | Best TX rate: {self.best_island_predictions[i]:.4f} | Target TX rate: {self.target_expression} | Sequence: {best_sequence}')
+                if self.geneticAlgorithm.print_progress:
+                    best_sequence = self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, self.best_island_sequences[i], self.geneticAlgorithm.mask_indices)
+                    print(f'Lineage {self.lineage_i+1}, Island {i+1}, Generation {gen+1} | Best TX rate: {self.best_island_predictions[i]:.4f} | Target TX rate: {self.geneticAlgorithm.target_expression} | Sequence: {best_sequence}')
 
-                if self.early_stopping and abs(self.best_island_predictions[i] - self.target_expression) < self.precision:
-                    if self.print_progress:
+                if self.geneticAlgorithm.early_stopping and abs(self.best_island_predictions[i] - self.geneticAlgorithm.target_expression) < self.geneticAlgorithm.precision:
+                    if self.geneticAlgorithm.print_progress:
                         print(f'Island {i+1}: Early stopping as target TX rate is achieved.')
                     overall_best_idx = np.argmax(self.best_island_fitnesses)
-                    best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[overall_best_idx], self.mask_indices)
-                    return best_sequence, self.best_island_predictions[overall_best_idx]
+                    best_sequence = self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, self.best_island_sequences[overall_best_idx], self.geneticAlgorithm.mask_indices)
+                    return best_sequence, self.best_island_predictions[overall_best_idx], self.island_pop_history
 
-                parents = self.selection_method(infills, fitness_scores, self.surviving_pop)
+                parents = self.geneticAlgorithm.selection_method(infills, fitness_scores, self.geneticAlgorithm.surviving_pop)
                 next_gen = []
                 while len(next_gen) < len(infills):
-                    selected_parents = random.sample(parents, self.num_parents)
-                    child = self.recombination(selected_parents)
-                    next_gen.append(self.mutate(child, self.base_mutation_rate))
+                    selected_parents = random.sample(parents, self.geneticAlgorithm.num_parents)
+                    child = self.mutate(self.recombination(selected_parents), self.geneticAlgorithm.base_mutation_rate)
+                    
+                    # TODO: This only avoids repeating the EXACT same sequence, not similar sequences
+                    if child not in self.geneticAlgorithm.seen_sequences or random.random() < self.repeat_avoidance_rate: 
+                        next_gen.append(child)
                 self.current_island_pop[i] = next_gen[:len(infills)]
 
             # Perform gene flow between islands
-            if self.islands > 1 and self.gene_flow_rate > 0:
+            if self.geneticAlgorithm.islands > 1 and self.geneticAlgorithm.gene_flow_rate > 0:
                 self.gene_flow()
             
             self.island_pop_history.append(list(self.current_island_pop))
 
         overall_best_idx = np.argmax(self.best_island_fitnesses)
-        best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[overall_best_idx], self.mask_indices)
-        return best_sequence, self.best_island_predictions[overall_best_idx]
+        best_sequence = self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, self.best_island_sequences[overall_best_idx], self.geneticAlgorithm.mask_indices)
+        return best_sequence, self.best_island_predictions[overall_best_idx], self.island_pop_history
     
 
 class SelectionMethod():
@@ -480,15 +411,14 @@ class SelectionMethod():
 
 if __name__ == '__main__':
     cnn_model_path = 'v2/Models/CNN_6_1_2.keras'
-    masked_sequence = 'NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN'
+    masked_sequence = 'AATACTAGAGGTCTTCCGACNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNGTGTGGGCGGGAAGACAACTAGGGG'
     target_expression = 1
 
     ga = GeneticAlgorithm(
         cnn_model_path=cnn_model_path,
         masked_sequence=masked_sequence,
         target_expression=target_expression,
-        islands=2,
     )
-    best_sequence, best_prediction = ga.run(2)
+    best_sequence, best_prediction, island_pop_history = ga.run(10, 1)
     print('\nBest infilled sequence:', best_sequence)
     print('Predicted transcription rate:', best_prediction)

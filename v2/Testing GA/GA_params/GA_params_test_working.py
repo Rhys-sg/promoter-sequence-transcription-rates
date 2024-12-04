@@ -66,20 +66,11 @@ class GeneticAlgorithm:
         self.early_stopping = early_stopping
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
-        self.chromosome_lengths = self._split_chromosome_lengths(self.mask_length, chromosomes)
+        self.chromosome_lengths = self.split_chromosome_lengths(self.mask_length, chromosomes)
 
         # For tracking and memoization purposes, could use lru_cache instead
-        self.island_pop_history = [[self.initialize_infills(self.mask_length, pop_size // islands) for _ in range(islands)]]
         self.caching = caching
         self.seen_sequences = {}
-        
-        # Initialize population for each island
-        self.current_island_pop = self.island_pop_history[0]
-
-        # For tracking the best sequence and prediction for each island
-        self.best_island_sequences = [None] * islands
-        self.best_island_fitnesses = [-float('inf')] * islands
-        self.best_island_predictions = [None] * islands
 
         # Set seed for reproducibility
         if seed is not None:
@@ -90,6 +81,124 @@ class GeneticAlgorithm:
     @staticmethod
     def get_device():
         return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    def split_chromosome_lengths(self, total_length, chromosomes):
+        """Split the mask length into chromosome lengths."""
+        base_length = total_length // chromosomes
+        lengths = [base_length] * chromosomes
+        for i in range(total_length % chromosomes):
+            lengths[i] += 1
+        return lengths
+    
+    def run(self, lineages=1):
+        best_sequences = []
+        best_predictions = []
+        for lineage_i in range(lineages):
+            lineage = Lineage(
+                lineage_i = lineage_i,
+                device = self.device,
+                cnn = load_model(cnn_model_path),
+                masked_sequence = masked_sequence,
+                target_expression = target_expression,
+                precision = self.precision,
+                max_length = self.max_length,
+                pop_size = self.pop_size,
+                generations = self.generations,
+                base_mutation_rate = self.base_mutation_rate,
+                chromosomes = self.chromosomes,
+                covariance = self.covariance,
+                elitist_rate = self.elitist_rate,
+                islands = self.islands,
+                gene_flow_rate = self.gene_flow_rate,
+                surviving_pop = self.surviving_pop,
+                num_parents = self.num_parents,
+                selection_method = self.selection_method,
+                print_progress = self.print_progress,
+                early_stopping = self.early_stopping,
+                mask_indices = self.mask_indices,
+                mask_length = self.mask_length,
+                chromosome_lengths = self.chromosome_lengths,
+                caching = self.caching,
+                seen_sequences = self.seen_sequences,
+            )
+
+            best_sequence, best_prediction = lineage.run()
+            best_sequences.append(best_sequence)
+            best_predictions.append(best_prediction)
+        
+        return best_sequences, best_predictions
+
+class Lineage:
+    """
+    This class represents a lineage of individuals that evolve independently in one instance of the genetic algorithm.
+    It is used to encapsulate running the algorithm multiple times to evaluate multiple generated sequences.
+    It also uses hamming distance to ensure that subsequent lineage explore untapped sections of the "sequence landscapes"
+    
+    """
+    def __init__(
+            self,
+            lineage_i,
+            device,
+            cnn,
+            masked_sequence,
+            target_expression,
+            precision,
+            max_length,
+            pop_size,
+            generations,
+            base_mutation_rate,
+            chromosomes,
+            covariance,
+            elitist_rate,
+            islands,
+            gene_flow_rate,
+            surviving_pop,
+            num_parents,
+            selection_method,
+            print_progress,
+            early_stopping,
+            mask_indices,
+            mask_length,
+            chromosome_lengths,
+            caching,
+            seen_sequences,
+    ):
+        self.lineage_i = lineage_i
+        self.device = device
+        self.cnn = cnn
+        self.masked_sequence = masked_sequence
+        self.target_expression = target_expression
+        self.precision = precision
+        self.max_length = max_length
+        self.pop_size = pop_size
+        self.generations = generations
+        self.base_mutation_rate = base_mutation_rate
+        self.chromosomes = chromosomes
+        self.covariance = covariance
+        self.elitist_rate = elitist_rate
+        self.islands = islands
+        self.gene_flow_rate = gene_flow_rate
+        self.surviving_pop = surviving_pop
+        self.num_parents = num_parents
+        self.selection_method = selection_method
+        self.print_progress = print_progress
+        self.early_stopping = early_stopping
+        self.mask_indices = mask_indices
+        self.mask_length = mask_length
+        self.chromosome_lengths = chromosome_lengths
+
+        # For tracking and memoization purposes, could use lru_cache instead
+        self.island_pop_history = [[self.initialize_infills(self.mask_length, pop_size // islands) for _ in range(islands)]]
+        self.caching = caching
+        self.seen_sequences = seen_sequences
+        
+        # Initialize population for each island
+        self.current_island_pop = self.island_pop_history[0]
+
+        # For tracking the best sequence and prediction for each island
+        self.best_island_sequences = [None] * islands
+        self.best_island_fitnesses = [-float('inf')] * islands
+        self.best_island_predictions = [None] * islands
     
     @staticmethod
     def one_hot_sequence(seq):
@@ -102,31 +211,6 @@ class GeneticAlgorithm:
             '0': [0, 0, 0, 0]
         }
         return np.array([mapping[nucleotide.upper()] for nucleotide in seq])
-
-    @staticmethod
-    def find_masked_regions(sequence):
-        return [(m.start(), m.end()) for m in re.finditer('N+', sequence)]
-
-    def _split_chromosome_lengths(self, total_length, chromosomes):
-        """Split the mask length into chromosome lengths."""
-        base_length = total_length // chromosomes
-        lengths = [base_length] * chromosomes
-        for i in range(total_length % chromosomes):
-            lengths[i] += 1
-        return lengths
-
-    def _split_into_chromosomes(self, infill):
-        """Split an infill string into separate chromosomes."""
-        chromosomes = []
-        start = 0
-        for length in self.chromosome_lengths:
-            chromosomes.append(infill[start:start + length])
-            start += length
-        return chromosomes
-
-    def _merge_chromosomes(self, chromosomes):
-        """Merge chromosomes into a single string."""
-        return ''.join(chromosomes)
 
     @staticmethod
     def initialize_infills(mask_length, pop_size):
@@ -164,14 +248,27 @@ class GeneticAlgorithm:
         return fitness_scores, predictions
 
     def recombination(self, parents):
-        parent_chromosomes = [self._split_into_chromosomes(parent) for parent in parents]
+        parent_chromosomes = [self.split_into_chromosomes(parent) for parent in parents]
         child_chromosomes = []
         for chrom_idx in range(len(parent_chromosomes[0])):
             chrom_slices = [parent[chrom_idx] for parent in parent_chromosomes]
             child_chromosome = self.crossover(chrom_slices)
             child_chromosomes.append(child_chromosome)
 
-        return self._merge_chromosomes(child_chromosomes)
+        return self.merge_chromosomes(child_chromosomes)
+    
+    def split_into_chromosomes(self, infill):
+        """Split an infill string into separate chromosomes."""
+        chromosomes = []
+        start = 0
+        for length in self.chromosome_lengths:
+            chromosomes.append(infill[start:start + length])
+            start += length
+        return chromosomes
+
+    def merge_chromosomes(self, chromosomes):
+        """Merge chromosomes into a single string."""
+        return ''.join(chromosomes)
     
     @staticmethod
     def crossover(chrom_slices):
@@ -232,12 +329,14 @@ class GeneticAlgorithm:
 
                 if self.print_progress:
                     best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[i], self.mask_indices)
-                    print(f"Island {i+1}, Generation {gen+1} | Best TX rate: {self.best_island_predictions[i]:.4f} | Target TX rate: {self.target_expression} | Sequence: {best_sequence}")
+                    print(f"Lingeage {self.lineage_i+1}, Island {i+1}, Generation {gen+1} | Best TX rate: {self.best_island_predictions[i]:.4f} | Target TX rate: {self.target_expression} | Sequence: {best_sequence}")
 
                 if self.early_stopping and abs(self.best_island_predictions[i] - self.target_expression) < self.precision:
                     if self.print_progress:
                         print(f"Island {i+1}: Early stopping as target TX rate is achieved.")
-                    continue
+                    overall_best_idx = np.argmax(self.best_island_fitnesses)
+                    best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[overall_best_idx], self.mask_indices)
+                    return best_sequence, self.best_island_predictions[overall_best_idx]
 
                 parents = self.selection_method(infills, fitness_scores, self.surviving_pop)
                 next_gen = []
@@ -388,7 +487,8 @@ if __name__ == '__main__':
         cnn_model_path=cnn_model_path,
         masked_sequence=masked_sequence,
         target_expression=target_expression,
+        islands=2,
     )
-    best_sequence, best_prediction = ga.run()
+    best_sequence, best_prediction = ga.run(2)
     print("\nBest infilled sequence:", best_sequence)
     print("Predicted transcription rate:", best_prediction)

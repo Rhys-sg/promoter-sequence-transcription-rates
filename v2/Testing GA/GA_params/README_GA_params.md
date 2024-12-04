@@ -29,7 +29,11 @@ We split the testing into XXX jupyter notebooks for readability and to avoid sto
 
 * **4_param_evaluations.ipynb** We evaluate the algorithm with optimized hyperparameters to see what limitations it still has.
 
+* **5_GA_analysis.ipynb** We see how varying the masked section of pLac can change the upper and lower bounds of it's expression.
+
+* **6_GA_insert_analysis.ipynb** The size of the masked region affects how well the GA can explore the expression landscape and reach the desired expression level. Here, we vary the mask length from 0-150 and analyze how well the GA can reach the desired expression level.
+
 ### Notes:
-* Because there is stochasticity in the results, we run each combination of parameters multiple times.
+* Because there is stochasticity in the results, we run each combination of parameters multiple times, with seeds for reproducibility.
 * More robust testing may optimize for a grid or random relative expression levels.
 * Other optimization approaches include Bayesian Optimization, Random Search, or Grid Search without identifying and seperating the parameter space.

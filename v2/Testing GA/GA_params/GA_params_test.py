@@ -42,6 +42,7 @@ class GeneticAlgorithm:
             boltzmann_temperature=1,
             print_progress=True,
             early_stopping=True,
+            caching=True,
             seed=None
     ):
         self.device = self.get_device()
@@ -66,7 +67,16 @@ class GeneticAlgorithm:
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
         self.chromosome_lengths = self._split_chromosome_lengths(self.mask_length, chromosomes)
-        self.island_populations = [self.initialize_infills(self.mask_length, pop_size // islands) for _ in range(islands)]
+
+        # For tracking and memoization purposes, could use lru_cache instead
+        self.island_pop_history = [[self.initialize_infills(self.mask_length, pop_size // islands) for _ in range(islands)]]
+        self.caching = caching
+        self.seen_sequences = {}
+        
+        # Initialize population for each island
+        self.current_island_pop = self.island_pop_history[0]
+
+        # For tracking the best sequence and prediction for each island
         self.best_island_sequences = [None] * islands
         self.best_island_fitnesses = [-float('inf')] * islands
         self.best_island_predictions = [None] * islands
@@ -137,11 +147,20 @@ class GeneticAlgorithm:
             self.reconstruct_sequence(self.masked_sequence, infill, self.mask_indices)
             for infill in infills
         ]
-        one_hot_pop = [self.one_hot_sequence(seq.zfill(self.max_length)) for seq in full_population]
-        one_hot_tensor = torch.tensor(np.stack(one_hot_pop), dtype=torch.float32)
-        with torch.no_grad():
-            predictions = self.cnn(one_hot_tensor).cpu().numpy().flatten()
-        fitness_scores = -np.abs(predictions - self.target_expression)
+        if not self.caching:
+            to_evaluate = [seq for seq in full_population if seq not in self.seen_sequences]
+        else:
+            to_evaluate = full_population
+        if to_evaluate:
+            one_hot_pop = [self.one_hot_sequence(seq.zfill(self.max_length)) for seq in to_evaluate]
+            one_hot_tensor = torch.tensor(np.stack(one_hot_pop), dtype=torch.float32)
+            with torch.no_grad():
+                predictions = self.cnn(one_hot_tensor).cpu().numpy().flatten()
+            fitness_scores = -np.abs(predictions - self.target_expression)
+            for seq, fitness, pred in zip(to_evaluate, fitness_scores, predictions):
+                self.seen_sequences[seq] = (fitness, pred)
+        fitness_scores = np.array([self.seen_sequences[seq][0] for seq in full_population])
+        predictions = np.array([self.seen_sequences[seq][1] for seq in full_population])
         return fitness_scores, predictions
 
     def recombination(self, parents):
@@ -186,23 +205,23 @@ class GeneticAlgorithm:
         for i in range(self.islands):
             # Select a random island to exchange individuals with
             donor_island = random.choice([j for j in range(self.islands) if j != i])
-            num_individuals = int(self.gene_flow_rate * len(self.island_populations[i]))
+            num_individuals = int(self.gene_flow_rate * len(self.current_island_pop[i]))
 
             # Select individuals to migrate
-            migrants_to_island = random.sample(self.island_populations[donor_island], num_individuals)
-            migrants_from_island = random.sample(self.island_populations[i], num_individuals)
+            migrants_to_island = random.sample(self.current_island_pop[donor_island], num_individuals)
+            migrants_from_island = random.sample(self.current_island_pop[i], num_individuals)
 
             # Exchange individuals
-            self.island_populations[i].extend(migrants_to_island)
-            self.island_populations[donor_island].extend(migrants_from_island)
+            self.current_island_pop[i].extend(migrants_to_island)
+            self.current_island_pop[donor_island].extend(migrants_from_island)
 
-            # Ensure populations do not exceed original size
-            self.island_populations[i] = random.sample(self.island_populations[i], len(self.island_populations[i]) - num_individuals)
-            self.island_populations[donor_island] = random.sample(self.island_populations[donor_island], len(self.island_populations[donor_island]) - num_individuals)
+            # Ensure pop do not exceed original size
+            self.current_island_pop[i] = random.sample(self.current_island_pop[i], len(self.current_island_pop[i]) - num_individuals)
+            self.current_island_pop[donor_island] = random.sample(self.current_island_pop[donor_island], len(self.current_island_pop[donor_island]) - num_individuals)
 
     def run(self):
         for gen in range(self.generations):
-            for i, infills in enumerate(self.island_populations):
+            for i, infills in enumerate(self.current_island_pop):
                 fitness_scores, predictions = self.evaluate_population(infills)
 
                 best_idx = np.argmax(fitness_scores)
@@ -226,11 +245,13 @@ class GeneticAlgorithm:
                     selected_parents = random.sample(parents, self.num_parents)
                     child = self.recombination(selected_parents)
                     next_gen.append(self.mutate(child, self.base_mutation_rate))
-                self.island_populations[i] = next_gen[:len(infills)]
+                self.current_island_pop[i] = next_gen[:len(infills)]
 
             # Perform gene flow between islands
             if self.islands > 1 and self.gene_flow_rate > 0:
                 self.gene_flow()
+            
+            self.island_pop_history.append(list(self.current_island_pop))
 
         overall_best_idx = np.argmax(self.best_island_fitnesses)
         best_sequence = self.reconstruct_sequence(self.masked_sequence, self.best_island_sequences[overall_best_idx], self.mask_indices)

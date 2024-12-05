@@ -32,6 +32,7 @@ class GeneticAlgorithm:
             base_mutation_rate=0.05,
             chromosomes=1,
             elitist_rate=0,
+            repeat_avoidance_rate=1,
             islands=1,
             gene_flow_rate=0,
             surval_rate=0.5,
@@ -55,6 +56,7 @@ class GeneticAlgorithm:
         self.base_mutation_rate = base_mutation_rate
         self.chromosomes = chromosomes
         self.elitist_rate = elitist_rate
+        self.repeat_avoidance_rate = repeat_avoidance_rate
         self.islands = islands
         self.gene_flow_rate = gene_flow_rate
         self.surviving_pop = max(1, int((self.pop_size / self.islands) * surval_rate)) # Ensure surviving_pop is at least 1
@@ -88,7 +90,7 @@ class GeneticAlgorithm:
             lengths[i] += 1
         return lengths
     
-    def run(self, lineages=1, repeat_avoidance_rate=0):
+    def run(self, lineages=1):
         best_sequences = []
         best_predictions = []
         lineage_island_pop_history = []
@@ -96,7 +98,6 @@ class GeneticAlgorithm:
             lineage = Lineage(
                 self,
                 lineage_idx = lineage_idx,
-                repeat_avoidance_rate = repeat_avoidance_rate,
             )
 
             # Run the genetic algorithm for the current lineage, record results
@@ -118,11 +119,9 @@ class Lineage:
             self,
             geneticAlgorithm,
             lineage_idx,
-            repeat_avoidance_rate,
     ):
         self.geneticAlgorithm = geneticAlgorithm
         self.lineage_idx = lineage_idx
-        self.repeat_avoidance_rate = repeat_avoidance_rate
         self.device = self.geneticAlgorithm.device
 
         # Initialize population history for each island, starting with the initial population   
@@ -281,7 +280,7 @@ class Lineage:
             selected_parents = random.sample(parents, self.geneticAlgorithm.num_parents)
             child = self.mutate(self.recombination(selected_parents), self.geneticAlgorithm.base_mutation_rate)
 
-            if child not in self.geneticAlgorithm.seen_sequences or random.random() < self.repeat_avoidance_rate:
+            if child not in self.geneticAlgorithm.seen_sequences or random.random() > self.geneticAlgorithm.repeat_avoidance_rate:
                 next_gen.append(child)
         
         return next_gen[:len(infills)]
@@ -445,6 +444,6 @@ if __name__ == '__main__':
         masked_sequence=masked_sequence,
         target_expression=target_expression,
     )
-    best_sequence, best_prediction, island_pop_history = ga.run(10, 1)
+    best_sequence, best_prediction, island_pop_history = ga.run(10)
     print('\nBest infilled sequence:', best_sequence)
     print('Predicted transcription rate:', best_prediction)

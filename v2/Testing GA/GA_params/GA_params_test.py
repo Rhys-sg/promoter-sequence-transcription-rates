@@ -453,7 +453,6 @@ if __name__ == '__main__':
         cnn_model_path=cnn_model_path,
         masked_sequence=masked_sequence,
         target_expression=target_expression,
-        repeat_avoidance_rate=1,
     )
     best_sequence, best_prediction, island_pop_history = ga.run(10)
     print('\nBest infilled sequence:', best_sequence)

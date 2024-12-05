@@ -235,7 +235,7 @@ class Lineage:
                 if self.geneticAlgorithm.early_stopping and self.check_early_stopping(island_idx):
                     return self.finalize_run()
 
-                self.current_island_pop[island_idx] = self.generate_next_generation(island_idx, infills)
+                self.current_island_pop[island_idx] = self.generate_next_generation(infills)
 
             if self.geneticAlgorithm.islands > 1 and self.geneticAlgorithm.gene_flow_rate > 0:
                 self.gene_flow()
@@ -272,7 +272,7 @@ class Lineage:
             return True
         return False
 
-    def generate_next_generation(self, island_idx, infills):
+    def generate_next_generation(self, infills):
         fitness_scores, _ = self.evaluate_population(infills)
         parents = self.geneticAlgorithm.selection_method(infills, fitness_scores, self.geneticAlgorithm.surviving_pop)
         next_gen = []
@@ -314,7 +314,6 @@ class Lineage:
         return best_sequence, self.best_island_predictions[overall_best_idx], self.island_pop_history
 
     
-
 class SelectionMethod():
     '''
     This class implements various selection methods for genetic algorithms and stores selection parameters.

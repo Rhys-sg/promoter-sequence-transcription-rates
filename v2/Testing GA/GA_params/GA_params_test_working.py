@@ -70,7 +70,8 @@ class GeneticAlgorithm:
 
         # For tracking and memoization purposes, could use lru_cache instead
         self.caching = caching
-        self.seen_sequences = {}
+        self.previous_lineage_infills = {}
+        self.seen_infills = {}
 
         # Set seed for reproducibility
         if seed is not None:
@@ -99,9 +100,12 @@ class GeneticAlgorithm:
                 self,
                 lineage_idx = lineage_idx,
             )
-
-            # Run the genetic algorithm for the current lineage, record results
+            # Run the genetic algorithm for the current lineage
             best_sequence, best_prediction, island_pop_history = lineage.run()
+
+            # Update the seen infills with the best infill from the current lineage
+            self.previous_lineage_infills.update(self.seen_infills)
+
             best_sequences.append(best_sequence)
             best_predictions.append(best_prediction)
             lineage_island_pop_history.append(island_pop_history)
@@ -112,7 +116,7 @@ class Lineage:
     '''
     This class represents a lineage of individuals that evolve independently in one instance of the genetic algorithm.
     It is used to encapsulate running the algorithm multiple times to evaluate multiple generated sequences.
-    It also uses hamming distance to ensure that subsequent lineage explore untapped sections of the 'sequence landscapes'
+    It also uses memoization to ensure that subsequent lineage explore untapped sections of the 'sequence landscapes'
     
     '''
     def __init__(
@@ -159,27 +163,29 @@ class Lineage:
         for idx, char in zip(mask_indices, infill):
             sequence[idx] = char
         return ''.join(sequence)
-
+    
     def evaluate_population(self, infills):
-        full_population = [
-            self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, infill, self.geneticAlgorithm.mask_indices)
-            for infill in infills
-        ]
         if self.geneticAlgorithm.caching:
-            to_evaluate = [seq for seq in full_population if seq not in self.geneticAlgorithm.seen_sequences]
+            to_evaluate_infills = [infill for infill in infills if infill not in self.geneticAlgorithm.seen_infills]
         else:
-            to_evaluate = full_population
-        if to_evaluate:
+            to_evaluate_infills = infills
+
+        if to_evaluate_infills:
+            to_evaluate = [
+                self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, infill, self.geneticAlgorithm.mask_indices)
+                for infill in to_evaluate_infills
+            ]
             one_hot_pop = [self.one_hot_sequence(seq.zfill(self.geneticAlgorithm.max_length)) for seq in to_evaluate]
             one_hot_tensor = torch.tensor(np.stack(one_hot_pop), dtype=torch.float32)
             with torch.no_grad():
                 predictions = self.geneticAlgorithm.cnn(one_hot_tensor).cpu().numpy().flatten()
             fitness_scores = -np.abs(predictions - self.geneticAlgorithm.target_expression)
-            for seq, fitness, pred in zip(to_evaluate, fitness_scores, predictions):
-                self.geneticAlgorithm.seen_sequences[seq] = (fitness, pred)
-        fitness_scores = np.array([self.geneticAlgorithm.seen_sequences[seq][0] for seq in full_population])
-        predictions = np.array([self.geneticAlgorithm.seen_sequences[seq][1] for seq in full_population])
+            for infill, fitness, pred in zip(to_evaluate_infills, fitness_scores, predictions):
+                self.geneticAlgorithm.seen_infills[infill] = (fitness, pred)
+        fitness_scores = np.array([self.geneticAlgorithm.seen_infills[infill][0] for infill in infills])
+        predictions = np.array([self.geneticAlgorithm.seen_infills[infill][1] for infill in infills])
         return fitness_scores, predictions
+
 
     def recombination(self, parents):
         parent_chromosomes = [self.split_into_chromosomes(parent) for parent in parents]
@@ -275,13 +281,17 @@ class Lineage:
         fitness_scores, _ = self.evaluate_population(infills)
         parents = self.geneticAlgorithm.selection_method(infills, fitness_scores, self.geneticAlgorithm.surviving_pop)
         next_gen = []
+        skip_count = 0
 
         while len(next_gen) < len(infills):
             selected_parents = random.sample(parents, self.geneticAlgorithm.num_parents)
             child = self.mutate(self.recombination(selected_parents), self.geneticAlgorithm.base_mutation_rate)
-
-            if child not in self.geneticAlgorithm.seen_sequences or random.random() > self.geneticAlgorithm.repeat_avoidance_rate:
+            if child not in self.geneticAlgorithm.previous_lineage_infills or random.random() > self.geneticAlgorithm.repeat_avoidance_rate:
                 next_gen.append(child)
+            else:
+                skip_count += 1
+        
+        print(f"Skipped {skip_count}")
         
         return next_gen[:len(infills)]
     
@@ -443,6 +453,7 @@ if __name__ == '__main__':
         cnn_model_path=cnn_model_path,
         masked_sequence=masked_sequence,
         target_expression=target_expression,
+        repeat_avoidance_rate=1,
     )
     best_sequence, best_prediction, island_pop_history = ga.run(10)
     print('\nBest infilled sequence:', best_sequence)

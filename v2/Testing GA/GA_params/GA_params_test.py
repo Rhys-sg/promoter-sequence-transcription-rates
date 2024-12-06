@@ -39,7 +39,7 @@ class GeneticAlgorithm:
             num_competitors=5,
             selection='tournament',
             boltzmann_temperature=1,
-            print_progress=True,
+            verbose=1,
             early_stopping=True,
             caching=True,
             seed=None
@@ -61,7 +61,7 @@ class GeneticAlgorithm:
         self.surviving_pop = max(1, int((self.pop_size / self.islands) * surval_rate)) # Ensure surviving_pop is at least 1
         self.num_parents = min(num_parents, self.surviving_pop) # Ensure num_parents is not larger than surviving_pop
         self.selection_method = getattr(SelectionMethod(self.surviving_pop, elitist_rate, num_competitors, boltzmann_temperature), selection)
-        self.print_progress = print_progress
+        self.verbose = verbose
         self.early_stopping = early_stopping
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
@@ -106,7 +106,13 @@ class GeneticAlgorithm:
             best_sequences.append(best_sequence)
             best_predictions.append(best_prediction)
 
+            self.print_progress(lineage_idx, best_sequence, best_prediction)
+
         return best_sequences, best_predictions
+    
+    def print_progress(self, lineage_idx, best_sequence, best_prediction):
+        if self.verbose > 0:
+            print(f'Lineage {lineage_idx+1} Complete: Best TX rate: {best_prediction:.4f} | Best Sequence: {best_sequence}')
 
 class Lineage:
     def __init__(self, geneticAlgorithm, lineage_idx):
@@ -134,7 +140,7 @@ class Lineage:
 
             self.generation_idx += 1
 
-        return self.finalize_run()
+        return self.best_sequence, self.best_prediction  
     
     def apply_gene_flow(self):        
         for recipient_idx in range(self.islands):
@@ -163,13 +169,10 @@ class Lineage:
 
     def check_early_stopping(self):
         if abs(self.best_prediction - self.geneticAlgorithm.target_expression) < self.geneticAlgorithm.precision:
-            if self.geneticAlgorithm.print_progress:
+            if self.geneticAlgorithm.verbose > 0:
                 print(f'Lineage {self.idx+1}: Early stopping as target TX rate is achieved.')
             return True
-        return False
-
-    def finalize_run(self):
-        return self.best_sequence, self.best_prediction       
+        return False             
 
 class Island:
     def __init__(self, lineage, geneticAlgorithm, idx):
@@ -248,8 +251,7 @@ class Island:
                 skipped_children += 1
 
         self.update_best(fitness_scores, predictions)
-        if self.geneticAlgorithm.print_progress:
-            self.print_progress(fitness_scores, predictions, skipped_children)
+        self.print_progress(fitness_scores, predictions, skipped_children)
         
         return next_gen[:len(self.population)]
     
@@ -295,7 +297,7 @@ class Island:
             self.best_prediction = predictions[best_idx]
             
     def print_progress(self, fitness_scores, predictions, skipped_children):
-        if self.geneticAlgorithm.print_progress:
+        if self.geneticAlgorithm.verbose == 2:
             best_sequence = self.reconstruct_sequence(
                 self.geneticAlgorithm.masked_sequence,
                 self.best_sequence,

@@ -5,6 +5,7 @@ import re
 import math
 from keras.models import load_model  # type: ignore
 
+from GA_visualizations_module import plot_3d_high_fitness_individuals_animated
 
 class GeneticAlgorithm:
     '''
@@ -94,29 +95,29 @@ class GeneticAlgorithm:
     def run(self, lineages=1):
         best_sequences = []
         best_predictions = []
-        lineage_island_pop_history = []
+
         for lineage_idx in range(lineages):
             lineage = Lineage(
                 self,
                 lineage_idx = lineage_idx,
             )
             # Run the genetic algorithm for the current lineage
-            best_sequence, best_prediction, island_pop_history = lineage.run()
+            best_sequence, best_prediction = lineage.run()
 
             # Update the seen infills with the best infill from the current lineage
             self.previous_lineage_infills.update(self.seen_infills)
 
             best_sequences.append(best_sequence)
             best_predictions.append(best_prediction)
-            lineage_island_pop_history.append(island_pop_history)
 
-        return best_sequences, best_predictions, island_pop_history
+        return best_sequences, best_predictions
 
 class Lineage:
     '''
     This class represents a lineage of individuals that evolve independently in one instance of the genetic algorithm.
     It is used to encapsulate running the algorithm multiple times to evaluate multiple generated sequences.
-    It also uses memoization to ensure that subsequent lineage explore untapped sections of the 'sequence landscapes'
+    It also uses geneticAlgorithm.seen_infills for memoization and geneticAlgorithm.seen_infills to ensure the current lineage
+    explores untapped sections of the 'sequence landscapes'
     
     '''
     def __init__(
@@ -128,10 +129,9 @@ class Lineage:
         self.lineage_idx = lineage_idx
         self.device = self.geneticAlgorithm.device
 
-        # Initialize population history for each island, starting with the initial population   
-        self.island_pop_history = [[self.initialize_infills(self.geneticAlgorithm.mask_length, self.geneticAlgorithm.pop_size // self.geneticAlgorithm.islands)
-                                    for _ in range(self.geneticAlgorithm.islands)]]
-        self.current_island_pop = self.island_pop_history[0]
+        # Initialize the population for each island
+        self.current_island_pop = [self.initialize_infills(self.geneticAlgorithm.mask_length, self.geneticAlgorithm.pop_size // self.geneticAlgorithm.islands)
+                                    for _ in range(self.geneticAlgorithm.islands)]
 
         # For tracking the best sequence and prediction for each island
         self.best_island_sequences = [None] * self.geneticAlgorithm.islands
@@ -186,7 +186,6 @@ class Lineage:
         predictions = np.array([self.geneticAlgorithm.seen_infills[infill][1] for infill in infills])
         return fitness_scores, predictions
 
-
     def recombination(self, parents):
         parent_chromosomes = [self.split_into_chromosomes(parent) for parent in parents]
         child_chromosomes = []
@@ -233,26 +232,25 @@ class Lineage:
         return ''.join(infill)
 
     def run(self):
+        skipped_children = 0
         for generation_idx in range(self.geneticAlgorithm.generations):
             for island_idx, infills in enumerate(self.current_island_pop):
-                self.evaluate_and_update_best(generation_idx, island_idx, infills)
+                fitness_scores = self.evaluate_and_update_best(generation_idx, island_idx, infills, skipped_children)
                 
                 if self.geneticAlgorithm.early_stopping and self.check_early_stopping(island_idx):
                     return self.finalize_run()
 
-                self.current_island_pop[island_idx] = self.generate_next_generation(infills)
+                self.current_island_pop[island_idx], skipped_children = self.generate_next_generation(infills)
 
             if self.geneticAlgorithm.islands > 1 and self.geneticAlgorithm.gene_flow_rate > 0:
                 self.gene_flow()
-            
-            self.island_pop_history.append(list(self.current_island_pop))
 
         return self.finalize_run()
 
-    def evaluate_and_update_best(self, generation_idx, island_idx, infills):
+    def evaluate_and_update_best(self, generation_idx, island_idx, infills, skipped_children):
         fitness_scores, predictions = self.evaluate_population(infills)
+
         best_idx = np.argmax(fitness_scores)
-        
         if fitness_scores[best_idx] > self.best_island_fitnesses[island_idx]:
             self.best_island_fitnesses[island_idx] = fitness_scores[best_idx]
             self.best_island_sequences[island_idx] = infills[best_idx]
@@ -265,15 +263,18 @@ class Lineage:
                 self.geneticAlgorithm.mask_indices
             )
             print(
-                f"Lineage {self.lineage_idx+1}, Island {island_idx+1}, "
-                f"Generation {generation_idx+1} | Best TX rate: {self.best_island_predictions[island_idx]:.4f} | "
-                f"Target TX rate: {self.geneticAlgorithm.target_expression} | Sequence: {best_sequence}"
+                f'Lineage {self.lineage_idx+1} | ' +
+                f'Island {island_idx+1} | ' +
+                f'Generation {generation_idx+1} | ' +
+                f'Best TX rate: {self.best_island_predictions[island_idx]:.4f} | ' +
+                f'Sequence: {best_sequence} | ' +
+                f'Children Not Added: {skipped_children}'
             )
 
     def check_early_stopping(self, island_idx):
         if abs(self.best_island_predictions[island_idx] - self.geneticAlgorithm.target_expression) < self.geneticAlgorithm.precision:
             if self.geneticAlgorithm.print_progress:
-                print(f"Island {island_idx+1}: Early stopping as target TX rate is achieved.")
+                print(f'Island {island_idx+1}: Early stopping as target TX rate is achieved.')
             return True
         return False
 
@@ -281,7 +282,7 @@ class Lineage:
         fitness_scores, _ = self.evaluate_population(infills)
         parents = self.geneticAlgorithm.selection_method(infills, fitness_scores, self.geneticAlgorithm.surviving_pop)
         next_gen = []
-        skip_count = 0
+        skipped_children = 0
 
         while len(next_gen) < len(infills):
             selected_parents = random.sample(parents, self.geneticAlgorithm.num_parents)
@@ -289,11 +290,9 @@ class Lineage:
             if child not in self.geneticAlgorithm.previous_lineage_infills or random.random() > self.geneticAlgorithm.repeat_avoidance_rate:
                 next_gen.append(child)
             else:
-                skip_count += 1
+                skipped_children += 1
         
-        print(f"Skipped {skip_count}")
-        
-        return next_gen[:len(infills)]
+        return next_gen[:len(infills)], skipped_children
     
     def gene_flow(self):        
         for i in range(self.geneticAlgorithm.islands):
@@ -320,7 +319,7 @@ class Lineage:
             self.best_island_sequences[overall_best_idx],
             self.geneticAlgorithm.mask_indices
         )
-        return best_sequence, self.best_island_predictions[overall_best_idx], self.island_pop_history
+        return best_sequence, self.best_island_predictions[overall_best_idx]
 
     
 class SelectionMethod():
@@ -454,6 +453,6 @@ if __name__ == '__main__':
         masked_sequence=masked_sequence,
         target_expression=target_expression,
     )
-    best_sequence, best_prediction, island_pop_history = ga.run(10)
-    print('\nBest infilled sequence:', best_sequence)
-    print('Predicted transcription rate:', best_prediction)
+    best_sequences, best_predictions = ga.run(3)
+    print('\nBest infilled sequences:', best_sequences)
+    print('Predicted transcription rates:', best_predictions)

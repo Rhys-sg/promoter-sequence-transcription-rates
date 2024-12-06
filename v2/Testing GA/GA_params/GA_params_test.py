@@ -5,8 +5,6 @@ import re
 import math
 from keras.models import load_model  # type: ignore
 
-from GA_visualizations_module import plot_3d_high_fitness_individuals_animated
-
 class GeneticAlgorithm:
     '''
     This class performs genetic algorithm to infill a masked sequence with nucleotides that maximize the predicted transcription rate.
@@ -97,10 +95,8 @@ class GeneticAlgorithm:
         best_predictions = []
 
         for lineage_idx in range(lineages):
-            lineage = Lineage(
-                self,
-                lineage_idx = lineage_idx,
-            )
+            lineage = Lineage(self, lineage_idx)
+
             # Run the genetic algorithm for the current lineage
             best_sequence, best_prediction = lineage.run()
 
@@ -113,78 +109,84 @@ class GeneticAlgorithm:
         return best_sequences, best_predictions
 
 class Lineage:
-    '''
-    This class represents a lineage of individuals that evolve independently in one instance of the genetic algorithm.
-    It is used to encapsulate running the algorithm multiple times to evaluate multiple generated sequences.
-    It also uses geneticAlgorithm.seen_infills for memoization and geneticAlgorithm.seen_infills to ensure the current lineage
-    explores untapped sections of the 'sequence landscapes'
-    
-    '''
-    def __init__(
-            self,
-            geneticAlgorithm,
-            lineage_idx,
-    ):
+    def __init__(self, geneticAlgorithm, lineage_idx):
         self.geneticAlgorithm = geneticAlgorithm
         self.lineage_idx = lineage_idx
-        self.device = self.geneticAlgorithm.device
+        self.generation_idx = 0
+        self.islands = [Island(self, geneticAlgorithm, island_idx) for island_idx in range(geneticAlgorithm.islands)]
 
-        # Initialize the population for each island
-        self.current_island_pop = [self.initialize_infills(self.geneticAlgorithm.mask_length, self.geneticAlgorithm.pop_size // self.geneticAlgorithm.islands)
-                                    for _ in range(self.geneticAlgorithm.islands)]
+        self.best_sequence = None
+        self.best_fitness = -float('inf')
+        self.best_prediction = None
 
-        # For tracking the best sequence and prediction for each island
-        self.best_island_sequences = [None] * self.geneticAlgorithm.islands
-        self.best_island_fitnesses = [-float('inf')] * self.geneticAlgorithm.islands
-        self.best_island_predictions = [None] * self.geneticAlgorithm.islands
+    def run(self):
+        while self.generation_idx < self.geneticAlgorithm.generations:
+            for island in self.islands:
+                island.population = island.generate_next_population()
+
+            if self.geneticAlgorithm.islands > 1 and self.geneticAlgorithm.gene_flow_rate > 0:
+                self.apply_gene_flow()
+
+            self.update_best()
+
+            if self.geneticAlgorithm.early_stopping and self.check_early_stopping():
+                break
+
+            self.generation_idx += 1
+
+        return self.finalize_run()
     
-    @staticmethod
-    def one_hot_sequence(seq):
-        mapping = {
-            'A': [1, 0, 0, 0],
-            'C': [0, 1, 0, 0],
-            'G': [0, 0, 1, 0],
-            'T': [0, 0, 0, 1],
-            'N': [0.25, 0.25, 0.25, 0.25],
-            '0': [0, 0, 0, 0]
-        }
-        return np.array([mapping[nucleotide.upper()] for nucleotide in seq])
+    def apply_gene_flow(self):        
+        for recipient_idx in range(self.islands):
+            # Select a random island to exchange individuals with
+            donor_idx = random.choice([j for j in range(self.islands) if j != recipient_idx])
+            num_individuals = int(self.geneticAlgorithm.gene_flow_rate * len(self.islands[recipient_idx].population))
 
-    @staticmethod
-    def initialize_infills(mask_length, pop_size):
+            # Select individuals to migrate
+            migrants_to_island = random.sample(self.islands[donor_idx].population, num_individuals)
+            migrants_from_island = random.sample(self.islands[recipient_idx].population, num_individuals)
+
+            # Exchange individuals
+            self.islands[recipient_idx].population.extend(migrants_to_island)
+            self.islands[donor_idx].population.extend(migrants_from_island)
+
+            # Ensure pop do not exceed original size
+            self.islands[recipient_idx].population = random.sample(self.islands[recipient_idx].population, len(self.islands[recipient_idx].population) - num_individuals)
+            self.islands[donor_idx].population = random.sample(self.islands[donor_idx].population, len(self.islands[donor_idx].population) - num_individuals)
+
+    def update_best(self):
+        for island in self.islands:
+            if island.best_fitness > self.best_fitness:
+                self.best_fitness = island.best_fitness
+                self.best_sequence = island.best_sequence
+                self.best_prediction = island.best_prediction
+
+    def check_early_stopping(self):
+        if abs(self.best_prediction - self.geneticAlgorithm.target_expression) < self.geneticAlgorithm.precision:
+            if self.geneticAlgorithm.print_progress:
+                print(f'Lineage {self.idx+1}: Early stopping as target TX rate is achieved.')
+            return True
+        return False
+
+    def finalize_run(self):
+        return self.best_sequence, self.best_prediction       
+
+class Island:
+    def __init__(self, lineage, geneticAlgorithm, idx):
+        self.lineage = lineage
+        self.geneticAlgorithm = geneticAlgorithm
+        self.idx = idx
+        self.population = self.initialize_infills()
+
+        self.best_sequence = None
+        self.best_fitness = -float('inf')
+        self.best_prediction = None
+
+    def initialize_infills(self):
         return [
-            ''.join([random.choice(['A', 'C', 'G', 'T']) for _ in range(mask_length)])
-            for _ in range(pop_size)
+            ''.join([random.choice(['A', 'C', 'G', 'T']) for _ in range(self.geneticAlgorithm.mask_length)])
+            for _ in range(self.geneticAlgorithm.pop_size // self.geneticAlgorithm.islands)
         ]
-
-    @staticmethod
-    def reconstruct_sequence(base_sequence, infill, mask_indices):
-        sequence = list(base_sequence)
-        for idx, char in zip(mask_indices, infill):
-            sequence[idx] = char
-        return ''.join(sequence)
-    
-    def evaluate_population(self, infills):
-        if self.geneticAlgorithm.caching:
-            to_evaluate_infills = [infill for infill in infills if infill not in self.geneticAlgorithm.seen_infills]
-        else:
-            to_evaluate_infills = infills
-
-        if to_evaluate_infills:
-            to_evaluate = [
-                self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, infill, self.geneticAlgorithm.mask_indices)
-                for infill in to_evaluate_infills
-            ]
-            one_hot_pop = [self.one_hot_sequence(seq.zfill(self.geneticAlgorithm.max_length)) for seq in to_evaluate]
-            one_hot_tensor = torch.tensor(np.stack(one_hot_pop), dtype=torch.float32)
-            with torch.no_grad():
-                predictions = self.geneticAlgorithm.cnn(one_hot_tensor).cpu().numpy().flatten()
-            fitness_scores = -np.abs(predictions - self.geneticAlgorithm.target_expression)
-            for infill, fitness, pred in zip(to_evaluate_infills, fitness_scores, predictions):
-                self.geneticAlgorithm.seen_infills[infill] = (fitness, pred)
-        fitness_scores = np.array([self.geneticAlgorithm.seen_infills[infill][0] for infill in infills])
-        predictions = np.array([self.geneticAlgorithm.seen_infills[infill][1] for infill in infills])
-        return fitness_scores, predictions
 
     def recombination(self, parents):
         parent_chromosomes = [self.split_into_chromosomes(parent) for parent in parents]
@@ -231,96 +233,89 @@ class Lineage:
                 infill[i] = random.choice(['A', 'C', 'G', 'T'])
         return ''.join(infill)
 
-    def run(self):
-        skipped_children = 0
-        for generation_idx in range(self.geneticAlgorithm.generations):
-            for island_idx, infills in enumerate(self.current_island_pop):
-                fitness_scores = self.evaluate_and_update_best(generation_idx, island_idx, infills, skipped_children)
-                
-                if self.geneticAlgorithm.early_stopping and self.check_early_stopping(island_idx):
-                    return self.finalize_run()
-
-                self.current_island_pop[island_idx], skipped_children = self.generate_next_generation(infills)
-
-            if self.geneticAlgorithm.islands > 1 and self.geneticAlgorithm.gene_flow_rate > 0:
-                self.gene_flow()
-
-        return self.finalize_run()
-
-    def evaluate_and_update_best(self, generation_idx, island_idx, infills, skipped_children):
-        fitness_scores, predictions = self.evaluate_population(infills)
-
-        best_idx = np.argmax(fitness_scores)
-        if fitness_scores[best_idx] > self.best_island_fitnesses[island_idx]:
-            self.best_island_fitnesses[island_idx] = fitness_scores[best_idx]
-            self.best_island_sequences[island_idx] = infills[best_idx]
-            self.best_island_predictions[island_idx] = predictions[best_idx]
-
-        if self.geneticAlgorithm.print_progress:
-            best_sequence = self.reconstruct_sequence(
-                self.geneticAlgorithm.masked_sequence,
-                self.best_island_sequences[island_idx],
-                self.geneticAlgorithm.mask_indices
-            )
-            print(
-                f'Lineage {self.lineage_idx+1} | ' +
-                f'Island {island_idx+1} | ' +
-                f'Generation {generation_idx+1} | ' +
-                f'Best TX rate: {self.best_island_predictions[island_idx]:.4f} | ' +
-                f'Sequence: {best_sequence} | ' +
-                f'Children Not Added: {skipped_children}'
-            )
-
-    def check_early_stopping(self, island_idx):
-        if abs(self.best_island_predictions[island_idx] - self.geneticAlgorithm.target_expression) < self.geneticAlgorithm.precision:
-            if self.geneticAlgorithm.print_progress:
-                print(f'Island {island_idx+1}: Early stopping as target TX rate is achieved.')
-            return True
-        return False
-
-    def generate_next_generation(self, infills):
-        fitness_scores, _ = self.evaluate_population(infills)
-        parents = self.geneticAlgorithm.selection_method(infills, fitness_scores, self.geneticAlgorithm.surviving_pop)
+    def generate_next_population(self):
+        fitness_scores, predictions = self.evaluate_population(self.population)
+        parents = self.geneticAlgorithm.selection_method(self.population, fitness_scores, self.geneticAlgorithm.surviving_pop)
         next_gen = []
         skipped_children = 0
 
-        while len(next_gen) < len(infills):
+        while len(next_gen) < len(self.population):
             selected_parents = random.sample(parents, self.geneticAlgorithm.num_parents)
             child = self.mutate(self.recombination(selected_parents), self.geneticAlgorithm.base_mutation_rate)
             if child not in self.geneticAlgorithm.previous_lineage_infills or random.random() > self.geneticAlgorithm.repeat_avoidance_rate:
                 next_gen.append(child)
             else:
                 skipped_children += 1
+
+        self.update_best(fitness_scores, predictions)
+        if self.geneticAlgorithm.print_progress:
+            self.print_progress(fitness_scores, predictions, skipped_children)
         
-        return next_gen[:len(infills)], skipped_children
+        return next_gen[:len(self.population)]
     
-    def gene_flow(self):        
-        for i in range(self.geneticAlgorithm.islands):
-            # Select a random island to exchange individuals with
-            donor_island = random.choice([j for j in range(self.geneticAlgorithm.islands) if j != i])
-            num_individuals = int(self.geneticAlgorithm.gene_flow_rate * len(self.current_island_pop[i]))
+    def evaluate_population(self, infills):
+        if self.geneticAlgorithm.caching:
+            to_evaluate_infills = [infill for infill in infills if infill not in self.geneticAlgorithm.seen_infills]
+        else:
+            to_evaluate_infills = infills
 
-            # Select individuals to migrate
-            migrants_to_island = random.sample(self.current_island_pop[donor_island], num_individuals)
-            migrants_from_island = random.sample(self.current_island_pop[i], num_individuals)
+        if to_evaluate_infills:
+            to_evaluate = [
+                self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, infill, self.geneticAlgorithm.mask_indices)
+                for infill in to_evaluate_infills
+            ]
+            one_hot_pop = [self.one_hot_sequence(seq.zfill(self.geneticAlgorithm.max_length)) for seq in to_evaluate]
+            one_hot_tensor = torch.tensor(np.stack(one_hot_pop), dtype=torch.float32)
+            with torch.no_grad():
+                predictions = self.geneticAlgorithm.cnn(one_hot_tensor).cpu().numpy().flatten()
+            fitness_scores = -np.abs(predictions - self.geneticAlgorithm.target_expression)
+            for infill, fitness, pred in zip(to_evaluate_infills, fitness_scores, predictions):
+                self.geneticAlgorithm.seen_infills[infill] = (fitness, pred)
+        fitness_scores = np.array([self.geneticAlgorithm.seen_infills[infill][0] for infill in infills])
+        predictions = np.array([self.geneticAlgorithm.seen_infills[infill][1] for infill in infills])
+        return fitness_scores, predictions
+    
+    @staticmethod
+    def one_hot_sequence(seq):
+        mapping = {
+            'A': [1, 0, 0, 0],
+            'C': [0, 1, 0, 0],
+            'G': [0, 0, 1, 0],
+            'T': [0, 0, 0, 1],
+            'N': [0.25, 0.25, 0.25, 0.25],
+            '0': [0, 0, 0, 0]
+        }
+        return np.array([mapping[nucleotide.upper()] for nucleotide in seq])
+    
+    def update_best(self, fitness_scores, predictions):
+        best_idx = np.argmax(fitness_scores)
+        if fitness_scores[best_idx] > self.best_fitness:
+            self.best_fitness = fitness_scores[best_idx]
+            self.best_sequence = self.population[best_idx]
+            self.best_prediction = predictions[best_idx]
+            
+    def print_progress(self, fitness_scores, predictions, skipped_children):
+        if self.geneticAlgorithm.print_progress:
+            best_sequence = self.reconstruct_sequence(
+                self.geneticAlgorithm.masked_sequence,
+                self.best_sequence,
+                self.geneticAlgorithm.mask_indices
+            )
+            print(
+                f'Lineage {self.lineage.lineage_idx+1} | ' +
+                f'Island {self.idx+1} | ' +
+                f'Generation {self.lineage.generation_idx+1} | ' +
+                f'Best TX rate: {self.best_prediction:.4f} | ' +
+                f'Sequence: {best_sequence} | ' +
+                f'Children Not Added: {skipped_children}'
+            )
 
-            # Exchange individuals
-            self.current_island_pop[i].extend(migrants_to_island)
-            self.current_island_pop[donor_island].extend(migrants_from_island)
-
-            # Ensure pop do not exceed original size
-            self.current_island_pop[i] = random.sample(self.current_island_pop[i], len(self.current_island_pop[i]) - num_individuals)
-            self.current_island_pop[donor_island] = random.sample(self.current_island_pop[donor_island], len(self.current_island_pop[donor_island]) - num_individuals)
-
-    def finalize_run(self):
-        overall_best_idx = np.argmax(self.best_island_fitnesses)
-        best_sequence = self.reconstruct_sequence(
-            self.geneticAlgorithm.masked_sequence,
-            self.best_island_sequences[overall_best_idx],
-            self.geneticAlgorithm.mask_indices
-        )
-        return best_sequence, self.best_island_predictions[overall_best_idx]
-
+    @staticmethod
+    def reconstruct_sequence(base_sequence, infill, mask_indices):
+        sequence = list(base_sequence)
+        for idx, char in zip(mask_indices, infill):
+            sequence[idx] = char
+        return ''.join(sequence)
     
 class SelectionMethod():
     '''

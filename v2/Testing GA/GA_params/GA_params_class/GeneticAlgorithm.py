@@ -43,7 +43,6 @@ class GeneticAlgorithm:
             selection='tournament',
             boltzmann_temperature=1,
             verbose=1,
-            caching=True,
             seed=None
     ):
         self.device = self.get_device()
@@ -69,7 +68,6 @@ class GeneticAlgorithm:
         self.chromosome_lengths = self.split_chromosome_lengths(self.mask_length, chromosomes)
 
         # For tracking and memoization purposes, could use lru_cache instead
-        self.caching = caching
         self.previous_lineage_infills = {}
         self.seen_infills = {}
 

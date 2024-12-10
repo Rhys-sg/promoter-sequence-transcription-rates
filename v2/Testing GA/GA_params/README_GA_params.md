@@ -2,7 +2,7 @@
 
 ### Description
 
-These jupyter notebooks find the optimal values the GA hyperparameters to minimize error and algorithm runtime. The algorithm can accurately explore the sequence landscape and find pLac inserts that meet the relative expressions of 0.1 and higher. However, it struggles to generate pLac inserts (-10, spacer, and -35) that change the sequence's relative expressions to be close to 0.
+These jupyter notebooks find the optimal values the GA hyperparameters to minimize error and algorithm runtime. The algorithm can accurately explore the sequence landscape and find pLac inserts that meet the relative expressions of 0.1 and higher. However, it struggles to generate pLac inserts (-10, spacer, and -35) that change the sequence's relative expressions to be close to 0. For robustness, we focus on target expression=0, but still test for 0.5 and 1.
 
 Parameters:
 * pop_size

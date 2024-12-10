@@ -29,7 +29,7 @@ class Lineage:
 
             self.update_best()
 
-            if self.geneticAlgorithm.early_stopping and self.check_early_stopping():
+            if self.check_early_stopping():
                 break
 
             self.generation_idx += 1
@@ -62,6 +62,8 @@ class Lineage:
                 self.best_prediction = island.best_prediction
 
     def check_early_stopping(self):
+        if self.geneticAlgorithm.precision == None:
+            return False
         if abs(self.best_prediction - self.geneticAlgorithm.target_expression) < self.geneticAlgorithm.precision:
             if self.geneticAlgorithm.verbose > 0:
                 print(f'Lineage {self.idx+1}: Early stopping as target TX rate is achieved.')

@@ -27,7 +27,7 @@ class GeneticAlgorithm:
             cnn_model_path,
             masked_sequence,
             target_expression,
-            precision=0.001,
+            precision=None,
             max_length=150,
             pop_size=100,
             generations=100, 
@@ -43,7 +43,6 @@ class GeneticAlgorithm:
             selection='tournament',
             boltzmann_temperature=1,
             verbose=1,
-            early_stopping=True,
             caching=True,
             seed=None
     ):
@@ -65,7 +64,6 @@ class GeneticAlgorithm:
         self.num_parents = min(num_parents, self.surviving_pop) # Ensure num_parents is not larger than surviving_pop
         self.selection_method = getattr(SelectionMethod(self.surviving_pop, elitist_rate, num_competitors, boltzmann_temperature), selection)
         self.verbose = verbose
-        self.early_stopping = early_stopping
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
         self.chromosome_lengths = self.split_chromosome_lengths(self.mask_length, chromosomes)

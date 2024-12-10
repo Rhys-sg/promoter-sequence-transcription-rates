@@ -39,8 +39,8 @@ class GeneticAlgorithm:
             gene_flow_rate=0,
             surval_rate=0.5,
             num_parents=2,
-            num_competitors=5,
             selection='tournament',
+            num_competitors=5,
             boltzmann_temperature=1,
             verbose=1,
             seed=None

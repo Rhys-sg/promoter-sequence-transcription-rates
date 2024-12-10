@@ -2,7 +2,7 @@
 
 ### Description
 
-These jupyter notebooks find the optimal values the GA hyperparameters to minimize error and algorithm runtime. The algorithm can accurately explore the sequence landscape and find pLac inserts that meet the relative expressions of 0.1 and higher. However, it struggles to generate pLac inserts (-10, spacer, and -35) that change the sequence's relative expressions to be close to 0. For robustness, we focus on target expression=0, but still test for 0.5 and 1.
+These jupyter notebooks find the optimal values the GA hyperparameters based on (1) minimized error, (2) algorithm runtime, and (3) lineage divergence. The algorithm can accurately explore the sequence landscape and find pLac inserts that meet the relative expressions of 0.1 and higher. However, it struggles to generate pLac inserts (-10, spacer, and -35) that change the sequence's relative expressions to be close to 0. For robustness, we focus on target expression=0, but still test for 0.5 and 1. Because there is stochasticity in the results, we run each combination of parameters multiple times, with seeds for reproducibility.
 
 Parameters:
 * pop_size
@@ -10,26 +10,22 @@ Parameters:
 * base_mutation_rate
 * chromosomes
 * elitist_rate
+* previous_lineage_hamming_alpha
 * islands
     * gene_flow_rate
 * surval_rate
 * num_parents
-* num_competitors
 * selection
+    * num_competitors
     * boltzmann_temperature
 
 ### Test by file
 We split the testing into XXX jupyter notebooks for readability and to avoid storing unnessesary data.
 
-* **1_sub_params.ipynb** We know gene_flow_rate is directly related to islands and boltzmann_temperature is only needed for boltzmann selection. So, we find the optimal values for these two parameters first, and set them in the interaction analysis.
+* **1_sub_params.ipynb** Some parameters are dependant on others. islands is conditional to gene_flow_rate while num_competitors and boltzmann_temperature only apply to the tournament and boltzmann selection methods, respectively. So, we find the optimal values for these parameters first.
 
-* **2_param_interdependance.ipynb** We test all combinations of high and low levels of parameters (full factorial design) to explicitly test for interactions, interdependance, or influence on each other.
+* **2_param_grid_search.ipynb** We do a broad grid search for each parameter (or combination if interdependant) seperately. Then, if necessary, we repeat the grid searh, narrowing in on the minimum error and run time combinations. 
 
-* **3_param_grid_search.ipynb** We do a broad grid search for each parameter (or combination if interdependant) seperately. Then, we repeat the grid searh, narrowing in on the minimum error and run time combinations. 
+* **3_random_search.ipynb** We use a probabilistic model (Gaussian process) to predict promising parameter combinations and iteratively improve them. Then, we compare these parameter combinations to see if they result in different minima compared to grid search. If they do, this means there are more interdependant parameters.
 
 * **4_param_evaluations.ipynb** We evaluate the algorithm with optimized hyperparameters to see what limitations it still has.
-
-### Notes:
-* Because there is stochasticity in the results, we run each combination of parameters multiple times, with seeds for reproducibility.
-* More robust testing may optimize for a grid or random relative expression levels.
-* Other optimization approaches include Bayesian Optimization, Random Search, or Grid Search without identifying and seperating the parameter space.

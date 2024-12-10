@@ -31,7 +31,7 @@ class GeneticAlgorithm:
             base_mutation_rate=0.05,
             chromosomes=1,
             elitist_rate=0,
-            repeat_avoidance_rate=1,
+            repeat_avoidance_rate=0,
             islands=1,
             gene_flow_rate=0,
             surval_rate=0.5,
@@ -110,9 +110,16 @@ class GeneticAlgorithm:
 
         return best_sequences, best_predictions
     
-    def print_progress(self, lineage_idx, best_sequence, best_prediction):
+    def print_progress(self, lineage_idx, infill, best_prediction):
         if self.verbose > 0:
+            best_sequence = self.reconstruct_sequence(infill)
             print(f'Lineage {lineage_idx+1} Complete: Best TX rate: {best_prediction:.4f} | Best Sequence: {best_sequence}')
+
+    def reconstruct_sequence(self, infill):
+        sequence = list(self.masked_sequence)
+        for idx, char in zip(self.mask_indices, infill):
+            sequence[idx] = char
+        return ''.join(sequence)
 
 class Lineage:
     def __init__(self, geneticAlgorithm, lineage_idx):
@@ -251,7 +258,7 @@ class Island:
                 skipped_children += 1
 
         self.update_best(fitness_scores, predictions)
-        self.print_progress(fitness_scores, predictions, skipped_children)
+        self.print_progress(skipped_children)
         
         return next_gen[:len(self.population)]
     
@@ -263,7 +270,7 @@ class Island:
 
         if to_evaluate_infills:
             to_evaluate = [
-                self.reconstruct_sequence(self.geneticAlgorithm.masked_sequence, infill, self.geneticAlgorithm.mask_indices)
+                self.geneticAlgorithm.reconstruct_sequence(infill)
                 for infill in to_evaluate_infills
             ]
             one_hot_pop = [self.one_hot_sequence(seq.zfill(self.geneticAlgorithm.max_length)) for seq in to_evaluate]
@@ -296,12 +303,10 @@ class Island:
             self.best_sequence = self.population[best_idx]
             self.best_prediction = predictions[best_idx]
             
-    def print_progress(self, fitness_scores, predictions, skipped_children):
+    def print_progress(self, skipped_children):
         if self.geneticAlgorithm.verbose == 2:
-            best_sequence = self.reconstruct_sequence(
-                self.geneticAlgorithm.masked_sequence,
+            best_sequence = self.geneticAlgorithm.reconstruct_sequence(
                 self.best_sequence,
-                self.geneticAlgorithm.mask_indices
             )
             print(
                 f'Lineage {self.lineage.lineage_idx+1} | ' +
@@ -311,13 +316,6 @@ class Island:
                 f'Sequence: {best_sequence} | ' +
                 f'Children Not Added: {skipped_children}'
             )
-
-    @staticmethod
-    def reconstruct_sequence(base_sequence, infill, mask_indices):
-        sequence = list(base_sequence)
-        for idx, char in zip(mask_indices, infill):
-            sequence[idx] = char
-        return ''.join(sequence)
     
 class SelectionMethod():
     '''

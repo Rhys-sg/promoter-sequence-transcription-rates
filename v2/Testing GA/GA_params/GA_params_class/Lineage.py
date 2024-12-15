@@ -1,7 +1,6 @@
 import random
 
-from Island import Island
-
+from .Island import Island
 
 class Lineage:
     '''
@@ -37,9 +36,9 @@ class Lineage:
         return self.best_infill, self.best_prediction  
     
     def apply_gene_flow(self):        
-        for recipient_idx in range(self.islands):
+        for recipient_idx in range(len(self.islands)):
             # Select a random island to exchange individuals with
-            donor_idx = random.choice([j for j in range(self.islands) if j != recipient_idx])
+            donor_idx = random.choice([j for j in range(len(self.islands)) if j != recipient_idx])
             num_individuals = int(self.geneticAlgorithm.gene_flow_rate * len(self.islands[recipient_idx].population))
 
             # Select individuals to migrate

@@ -5,8 +5,8 @@ import re
 import math
 from keras.models import load_model  # type: ignore
 
-from Lineage import Lineage
-from SelectionMethod import SelectionMethod
+from .Lineage import Lineage
+from .SelectionMethod import SelectionMethod
 
 class GeneticAlgorithm:
     '''
@@ -34,7 +34,7 @@ class GeneticAlgorithm:
             base_mutation_rate=0.05,
             chromosomes=1,
             elitist_rate=0,
-            previous_lineage_hamming_alpha=1,
+            lineage_divergence_alpha=1,
             islands=1,
             gene_flow_rate=0,
             surval_rate=0.5,
@@ -56,7 +56,7 @@ class GeneticAlgorithm:
         self.base_mutation_rate = base_mutation_rate
         self.chromosomes = chromosomes
         self.elitist_rate = elitist_rate
-        self.previous_lineage_hamming_alpha = previous_lineage_hamming_alpha
+        self.lineage_divergence_alpha = lineage_divergence_alpha
         self.islands = islands
         self.gene_flow_rate = gene_flow_rate
         self.surviving_pop = max(1, int((self.pop_size / self.islands) * surval_rate)) # Ensure surviving_pop is at least 1
@@ -109,7 +109,7 @@ class GeneticAlgorithm:
 
             self.print_progress(lineage_idx, best_infill, best_prediction)
 
-        return self.best_infills, self.best_predictions
+        return [self.reconstruct_sequence(infill) for infill in self.best_infills], self.best_predictions
     
     def print_progress(self, lineage_idx, infill, best_prediction):
         if self.verbose > 0:
@@ -121,18 +121,3 @@ class GeneticAlgorithm:
         for idx, char in zip(self.mask_indices, infill):
             sequence[idx] = char
         return ''.join(sequence)
-
-
-if __name__ == '__main__':
-    cnn_model_path = 'v2/Models/CNN_6_1_2.keras'
-    masked_sequence = 'AATACTAGAGGTCTTCCGACNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNGTGTGGGCGGGAAGACAACTAGGGG'
-    target_expression = 1
-
-    ga = GeneticAlgorithm(
-        cnn_model_path=cnn_model_path,
-        masked_sequence=masked_sequence,
-        target_expression=target_expression,
-    )
-    best_sequences, best_predictions = ga.run(3)
-    print('\nBest infilled sequences:', best_sequences)
-    print('Predicted transcription rates:', best_predictions)

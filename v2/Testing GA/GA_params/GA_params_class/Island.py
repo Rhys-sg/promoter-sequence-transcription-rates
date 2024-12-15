@@ -114,9 +114,9 @@ class Island:
                         as a percent of the sequence and scaled by an alpha parameter.
         '''
         prediction_loss = -np.abs(predictions - self.geneticAlgorithm.target_expression)
-        if self.geneticAlgorithm.previous_lineage_hamming_alpha == 0:
+        if self.geneticAlgorithm.lineage_divergence_alpha == 0:
             return prediction_loss
-        hamming_loss = np.array([self.calculate_previous_lineage_hamming(infill) * self.geneticAlgorithm.previous_lineage_hamming_alpha for infill in to_evaluate])
+        hamming_loss = np.array([self.calculate_previous_lineage_hamming(infill) * self.geneticAlgorithm.lineage_divergence_alpha for infill in to_evaluate])
         return prediction_loss + hamming_loss
     
     @staticmethod
@@ -133,7 +133,7 @@ class Island:
     
     def calculate_previous_lineage_hamming(self, infill):
         if self.lineage.lineage_idx != 0:
-            return max(self.calculate_hamm_distance(infill, best_infill)/len(best_infill) for best_infill in self.geneticAlgorithm.best_infills)
+            return -max(self.calculate_hamm_distance(infill, best_infill)/len(best_infill) for best_infill in self.geneticAlgorithm.best_infills)
         else:
             return 0
     

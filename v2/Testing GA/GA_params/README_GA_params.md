@@ -10,7 +10,7 @@ Parameters:
 * base_mutation_rate
 * chromosomes
 * elitist_rate
-* previous_lineage_hamming_alpha
+* lineage_divergence_alpha
 * islands
     * gene_flow_rate
 * surval_rate
@@ -26,6 +26,9 @@ We split the testing into XXX jupyter notebooks for readability and to avoid sto
 
 * **2_param_grid_search.ipynb** We do a broad grid search for each parameter (or combination if interdependant) seperately. Then, if necessary, we repeat the grid searh, narrowing in on the minimum error and run time combinations. 
 
-* **3_random_search.ipynb** We use a probabilistic model (Gaussian process) to predict promising parameter combinations and iteratively improve them. Then, we compare these parameter combinations to see if they result in different minima compared to grid search. If they do, this means there are more interdependant parameters.
+* **3_bayesian_search.ipynb** We use a probabilistic model (Gaussian process) to predict promising parameter combinations and iteratively improve them. Then, we compare these parameter combinations to see if they result in different minima compared to grid search. If they do, this means there are more interdependant parameters.
 
 * **4_param_evaluations.ipynb** We evaluate the algorithm with optimized hyperparameters to see what limitations it still has.
+
+### Notes:
+Should we add code to test all combinations of high and low levels of parameters (full factorial design) to explicitly test for interactions, interdependance, or influence on each other. We would define a ranges for each hyperparameter (each with 5 values except for selection), compare influence?, then analyze results using ANOVA to identify significant interaction effects.

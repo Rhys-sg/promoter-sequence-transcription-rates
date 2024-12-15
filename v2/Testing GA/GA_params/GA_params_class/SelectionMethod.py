@@ -52,7 +52,7 @@ class SelectionMethod():
         max_fitness = max(fitness_scores)
         min_fitness = min(fitness_scores)
         adjusted_scores = [(score - min_fitness) / (max_fitness - min_fitness + 1e-6) for score in fitness_scores]
-        return self.roulette(population, adjusted_scores)
+        return self.roulette(population, adjusted_scores, surviving_pop)
     
     def rank_based(self, population, fitness_scores, surviving_pop):
         '''Individuals are ranked based on their fitness, and selection probabilities are assigned based on rank rather than absolute fitness.'''

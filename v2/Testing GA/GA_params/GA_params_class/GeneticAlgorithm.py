@@ -30,11 +30,11 @@ class GeneticAlgorithm:
             precision=None,
             max_length=150,
             pop_size=100,
-            generations=100, 
+            generations=150, 
             base_mutation_rate=0.05,
             chromosomes=1,
             elitist_rate=0,
-            lineage_divergence_alpha=1,
+            lineage_divergence_alpha=0,
             islands=1,
             gene_flow_rate=0,
             surval_rate=0.5,
@@ -81,6 +81,9 @@ class GeneticAlgorithm:
             np.random.seed(seed)
             torch.manual_seed(seed)
 
+        # track lineages
+        self.lineages = []
+
     @staticmethod
     def get_device():
         return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -97,6 +100,7 @@ class GeneticAlgorithm:
         '''Run the genetic algorithm for the specified number of lineages.'''
         for lineage_idx in range(lineages):
             lineage = Lineage(self, lineage_idx)
+            self.lineages.append(lineage)
 
             # Run the genetic algorithm for the current lineage
             best_infill, best_prediction = lineage.run()
@@ -121,3 +125,12 @@ class GeneticAlgorithm:
         for idx, char in zip(self.mask_indices, infill):
             sequence[idx] = char
         return ''.join(sequence)
+    
+    def get_infill_history(self):
+        return [lineage.get_infill_history() for lineage in self.lineages]
+    
+    def get_fitness_history(self):
+        return [lineage.get_fitness_history() for lineage in self.lineages]
+    
+    def get_prediction_history(self):
+        return [lineage.get_prediction_history() for lineage in self.lineages]

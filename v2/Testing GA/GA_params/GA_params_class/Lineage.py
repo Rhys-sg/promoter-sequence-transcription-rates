@@ -67,4 +67,13 @@ class Lineage:
             if self.geneticAlgorithm.verbose > 0:
                 print(f'Lineage {self.idx+1}: Early stopping as target TX rate is achieved.')
             return True
-        return False             
+        return False    
+
+    def get_infill_history(self):
+        return [island.get_infill_history() for island in self.islands]
+    
+    def get_fitness_history(self):
+        return [island.get_fitness_history() for island in self.islands]
+    
+    def get_prediction_history(self):
+        return [island.get_prediction_history() for island in self.islands]

@@ -19,6 +19,10 @@ class Island:
         self.best_fitness = -float('inf')
         self.best_prediction = None
 
+        self.infill_history = []
+        self.fitness_history = []
+        self.prediction_history = []
+
     def initialize_infills(self):
         return [
             ''.join([random.choice(['A', 'C', 'G', 'T']) for _ in range(self.geneticAlgorithm.mask_length)])
@@ -80,6 +84,7 @@ class Island:
             child = self.mutate(self.recombination(selected_parents), self.geneticAlgorithm.base_mutation_rate)
             next_gen.append(child)
 
+        self.record_history(fitness_scores, predictions)
         self.update_best(fitness_scores, predictions)
         
         return next_gen[:len(self.population)]
@@ -141,11 +146,16 @@ class Island:
     def calculate_hamm_distance(infill, target_infill):
         return sum([1 for s, t in zip(infill, target_infill) if s != t])
     
+    def record_history(self, fitness_scores, predictions):
+        self.infill_history.append(self.population)
+        self.fitness_history.append(fitness_scores)
+        self.prediction_history.append(predictions)
+    
     def update_best(self, fitness_scores, predictions):
         best_idx = np.argmax(fitness_scores)
         if fitness_scores[best_idx] > self.best_fitness:
-            self.best_fitness = fitness_scores[best_idx]
             self.best_infill = self.population[best_idx]
+            self.best_fitness = fitness_scores[best_idx]
             self.best_prediction = predictions[best_idx]
             
     def print_progress(self):
@@ -160,3 +170,12 @@ class Island:
                 f'Best TX rate: {self.best_prediction:.4f} | ' +
                 f'Sequence: {best_sequence}'
             )
+    
+    def get_infill_history(self):
+        return self.infill_history
+    
+    def get_fitness_history(self):
+        return self.fitness_history
+    
+    def get_prediction_history(self):
+        return self.prediction_history

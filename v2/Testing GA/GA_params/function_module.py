@@ -3,6 +3,94 @@ import numpy as np
 import seaborn as sns
 import pandas as pd
 import time
+from tqdm import tqdm
+
+from GA_params_class.GeneticAlgorithm import GeneticAlgorithm
+
+def test_params(param_range, param_name, cnn_model_path, masked_sequence, target_expressions, precision, verbose, lineages, iteration=1, seed=1):
+    results = []
+    total_combinations = len(target_expressions) * len(param_range)
+    progress_bar = tqdm(total=total_combinations, desc='Processing combinations', position=0)
+    initial_time = time.time()
+
+    for target_expression in target_expressions:
+        for i, param_val in enumerate(param_range):
+            # Dynamically set the dependent parameter using kwargs
+            ga_kwargs = {
+                param_name: param_val  # Add the parameter dynamically
+            }
+            ga = GeneticAlgorithm(
+                cnn_model_path=cnn_model_path,
+                masked_sequence=masked_sequence,
+                target_expression=target_expression,
+                precision=precision,
+                verbose=verbose,
+                seed=seed,
+                **ga_kwargs  # Pass dynamically created kwargs
+            )
+            # Time the run
+            start_time = time.time()
+            best_sequences, best_predictions = ga.run(lineages)
+            end_time = time.time()
+
+            # Record the results
+            for sequence, prediction in zip(best_sequences, best_predictions):
+                results.append({
+                    'target_expression': target_expression,
+                    param_name: param_val,
+                    'sequence': sequence,
+                    'error': abs(prediction - target_expression),
+                    'run_time': (end_time - start_time) / lineages
+                })
+                
+            # Update progress bar
+            progress_bar.update(1)
+            elapsed_time = time.time() - initial_time
+            eta = ((elapsed_time / (i+1)) * (total_combinations - (i+1)))
+            if eta > 60:
+                eta_message = f'{eta/60:.2f}min'
+            else:
+                eta_message = f'{eta:.2f}s'
+            progress_bar.set_postfix({
+                'Elapsed': f'{elapsed_time:.2f}s',
+                'ETA': eta_message
+            })
+
+    # Close progress bar
+    progress_bar.close()
+
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(f'Data/individual_params/{param_name}_results_{iteration}.csv', index=False)
+
+    return results_df
+
+def bayesian_test(params, cnn_model_path, masked_sequence, target_expressions, precision, verbose, lineages, seed=1):
+    print(f'Testing params: {params}', end='')
+    error = 0
+    run_time = 0
+
+    for target_expression in target_expressions:
+        ga = GeneticAlgorithm(
+            cnn_model_path=cnn_model_path,
+            masked_sequence=masked_sequence,
+            target_expression=target_expression,
+            precision=precision,
+            verbose=verbose,
+            seed=seed,
+            **params
+        )
+        # Time the run
+        start_time = time.time()
+        _, best_predictions = ga.run(lineages)
+        end_time = time.time()
+
+        # Record the results
+        error += sum([abs(prediction - target_expression) for prediction in best_predictions]) / lineages
+        run_time += (end_time - start_time) / lineages
+    error /= len(target_expressions)
+    print(f' - Error: {error}, Run Time: {run_time}')
+
+    return error, run_time
 
 def heatmap(results_df, target_expression, index, columns, figsize=(14, 6)):
     error_pivot_table = results_df.pivot_table(values='error', index=index, columns=columns, aggfunc='mean')
@@ -10,7 +98,7 @@ def heatmap(results_df, target_expression, index, columns, figsize=(14, 6)):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     # Heatmap for Mean Error
-    sns.heatmap(error_pivot_table, annot=True, fmt=".2f", cmap="viridis", ax=axes[0])
+    sns.heatmap(error_pivot_table, annot=True, fmt='.2f', cmap='viridis', ax=axes[0])
     axes[0].set_title(f'Mean Error for {index} and {columns} with Target Expression {target_expression}')
     axes[0].set_xlabel(columns)
     axes[0].set_ylabel(index)
@@ -18,7 +106,7 @@ def heatmap(results_df, target_expression, index, columns, figsize=(14, 6)):
     axes[0].set_yticklabels([tick.get_text() for tick in axes[0].get_yticklabels()], rotation=0)
 
     # Heatmap for Run Time
-    sns.heatmap(runtime_pivot_table, annot=True, fmt=".2f", cmap="viridis", ax=axes[1])
+    sns.heatmap(runtime_pivot_table, annot=True, fmt='.2f', cmap='viridis', ax=axes[1])
     axes[1].set_title(f'Run Time for {index} and {columns} with Target Expression {target_expression}')
     axes[1].set_xlabel(columns)
     axes[1].set_ylabel(index)

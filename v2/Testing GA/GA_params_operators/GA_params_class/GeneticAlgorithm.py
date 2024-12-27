@@ -7,6 +7,9 @@ from keras.models import load_model  # type: ignore
 
 from .Lineage import Lineage
 from .SelectionMethod import SelectionMethod
+from .MutationMethod import MutationMethod
+from .CrossoverMethod import CrossoverMethod
+from .ParentChoiceMethod import ParentChoiceMethod
 
 class GeneticAlgorithm:
     '''
@@ -29,19 +32,40 @@ class GeneticAlgorithm:
             target_expression,
             precision=None,
             max_length=150,
+
+            # Search parameters
             pop_size=100,
-            generations=150, 
-            base_mutation_rate=0.05,
-            chromosomes=1,
-            elitist_rate=0,
+            generations=150,
+
+            # MOGA parameters
             lineage_divergence_alpha=0,
+            diversity_alpha=0,
+
+            # Parallel GA/island parameters
             islands=1,
             gene_flow_rate=0,
-            surval_rate=0.5,
-            num_parents=2,
+
+            # selection parameters
             selection='tournament',
+            elitist_rate=0,
             num_competitors=5,
-            boltzmann_temperature=1,
+            boltzmann_temperature=0.03,
+            
+            # mutation parameters
+            mutation='relative_bit_string',
+            mutation_rate=1,
+            relative_mutation_rate_alpha=1,
+
+            # crossover parameters
+            crossover='single_point',
+            k_crossover_points=2,
+
+            # parent choice parameters
+            parent_choice='by_order',
+            covariance=0,
+            generational_covariance_alpha=0,
+
+            # other parameters
             verbose=1,
             seed=None
     ):
@@ -53,19 +77,21 @@ class GeneticAlgorithm:
         self.max_length = max_length
         self.pop_size = pop_size
         self.generations = generations
-        self.base_mutation_rate = base_mutation_rate
-        self.chromosomes = chromosomes
-        self.elitist_rate = elitist_rate
         self.lineage_divergence_alpha = lineage_divergence_alpha
+        self.diversity_alpha = diversity_alpha
         self.islands = islands
         self.gene_flow_rate = gene_flow_rate
-        self.surviving_pop = max(1, int((self.pop_size / self.islands) * surval_rate)) # Ensure surviving_pop is at least 1
-        self.num_parents = min(num_parents, self.surviving_pop) # Ensure num_parents is not larger than surviving_pop
-        self.selection_method = getattr(SelectionMethod(self.surviving_pop, elitist_rate, num_competitors, boltzmann_temperature), selection)
+        self.island_pop = max(1, int((self.pop_size / self.islands))) # Ensure it is at least 1
+
+        # Operators and their parameters
+        self.selection_method = getattr(SelectionMethod(self.island_pop, elitist_rate, num_competitors, boltzmann_temperature), selection)
+        self.mutation_method = getattr(MutationMethod(mutation_rate, generations, relative_mutation_rate_alpha), mutation)
+        self.crossover_method = getattr(CrossoverMethod(k_crossover_points), crossover)
+        self.parent_choice_method = getattr(ParentChoiceMethod(covariance, generational_covariance_alpha), parent_choice)
+
         self.verbose = verbose
         self.mask_indices = [i for i, nucleotide in enumerate(masked_sequence) if nucleotide == 'N']
         self.mask_length = len(self.mask_indices)
-        self.chromosome_lengths = self.split_chromosome_lengths(self.mask_length, chromosomes)
 
         # For tracking and memoization purposes, could use lru_cache instead
         self.previous_lineage_infills = {}
@@ -87,14 +113,6 @@ class GeneticAlgorithm:
     @staticmethod
     def get_device():
         return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    def split_chromosome_lengths(self, total_length, chromosomes):
-        '''Split the mask length into chromosome lengths.'''
-        base_length = total_length // chromosomes
-        lengths = [base_length] * chromosomes
-        for i in range(total_length % chromosomes):
-            lengths[i] += 1
-        return lengths
     
     def run(self, lineages=1):
         '''Run the genetic algorithm for the specified number of lineages.'''

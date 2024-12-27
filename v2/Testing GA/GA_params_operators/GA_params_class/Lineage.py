@@ -22,12 +22,12 @@ class Lineage:
         while self.generation_idx < self.geneticAlgorithm.generations:
             for island in self.islands:
                 island.population = island.generate_next_population()
+                island.print_progress()
 
             if self.geneticAlgorithm.islands > 1 and self.geneticAlgorithm.gene_flow_rate > 0:
                 self.apply_gene_flow()
 
             self.update_best()
-
             if self.check_early_stopping():
                 break
 

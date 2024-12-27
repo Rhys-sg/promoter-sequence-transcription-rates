@@ -5,9 +5,10 @@ class SelectionMethod():
     '''
     This class implements various selection methods for genetic algorithms and stores selection parameters.
     '''
-    def __init__(self, surviving_pop, elitist_rate, num_competitors, boltzmann_temperature):
+    def __init__(self, surviving_pop, elitist_rate, num_competitors, steady_state_k, boltzmann_temperature):
         self.elitist_rate = elitist_rate
         self.num_competitors = min(num_competitors, surviving_pop) # Ensure num_competitors is not larger than surviving_pop
+        self.steady_state_k = steady_state_k
         self.boltzmann_temperature = boltzmann_temperature
     
     def tournament(self, population, fitness_scores, surviving_pop):
@@ -92,12 +93,14 @@ class SelectionMethod():
                     break
         return parents
     
-    def truncation(self, population, fitness_scores, surviving_pop):
+    def truncation(self, population, fitness_scores, surviving_pop, reverse=False):
         '''
         Only the top individuals are selected for the next generation.
         This method is reused for elitist selection by setting elitist_rate to a value between 0 and 1.
         '''
         sorted_indices = sorted(range(len(fitness_scores)), key=lambda idx: fitness_scores[idx], reverse=True)
+        if reverse:
+            sorted_indices = sorted_indices[::-1]
         parents = [population[idx] for idx in sorted_indices[:surviving_pop]]
         return parents
     

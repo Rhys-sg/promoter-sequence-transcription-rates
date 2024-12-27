@@ -9,9 +9,10 @@ from GA_params_class.GeneticAlgorithm import GeneticAlgorithm
 
 def test_params(param_range, param_name, cnn_model_path, masked_sequence, target_expressions, precision, verbose, lineages, iteration=1, seed=1):
     results = []
-    total_combinations = len(target_expressions) * len(param_range)
+    total_combinations = len(target_expressions) * len(param_range) * lineages
     progress_bar = tqdm(total=total_combinations, desc='Processing combinations', position=0)
     initial_time = time.time()
+    current_combination = 0
 
     for target_expression in target_expressions:
         for i, param_val in enumerate(param_range):
@@ -28,33 +29,31 @@ def test_params(param_range, param_name, cnn_model_path, masked_sequence, target
                 seed=seed,
                 **ga_kwargs  # Pass dynamically created kwargs
             )
-            # Time the run
-            start_time = time.time()
-            best_sequences, best_predictions = ga.run(lineages)
-            end_time = time.time()
+            for _ in range(lineages):
+                current_combination += 1
 
-            # Record the results
-            for sequence, prediction in zip(best_sequences, best_predictions):
-                results.append({
-                    'target_expression': target_expression,
-                    param_name: param_val,
-                    'sequence': sequence,
-                    'error': abs(prediction - target_expression),
-                    'run_time': (end_time - start_time) / lineages
+                # Time the run
+                start_time = time.time()
+                best_sequences, best_predictions = ga.run()
+                end_time = time.time()
+
+                # Record the results
+                for sequence, prediction in zip(best_sequences, best_predictions):
+                    results.append({
+                        'target_expression': target_expression,
+                        param_name: param_val,
+                        'sequence': sequence,
+                        'error': abs(prediction - target_expression),
+                        'run_time': (end_time - start_time) / lineages
+                    })
+            
+                # Update progress bar
+                progress_bar.update(1)
+                elapsed_time = time.time() - initial_time
+                progress_bar.set_postfix({
+                    "Elapsed": format_time(elapsed_time),
+                    "ETA": format_time(((elapsed_time / current_combination) * (total_combinations - current_combination)))
                 })
-                
-            # Update progress bar
-            progress_bar.update(1)
-            elapsed_time = time.time() - initial_time
-            eta = ((elapsed_time / (i+1)) * (total_combinations - (i+1)))
-            if eta > 60:
-                eta_message = f'{eta/60:.2f}min'
-            else:
-                eta_message = f'{eta:.2f}s'
-            progress_bar.set_postfix({
-                'Elapsed': f'{elapsed_time:.2f}s',
-                'ETA': eta_message
-            })
 
     # Close progress bar
     progress_bar.close()
@@ -91,6 +90,11 @@ def bayesian_test(params, cnn_model_path, masked_sequence, target_expressions, p
     print(f' - Error: {error}, Run Time: {run_time}')
 
     return error, run_time
+
+def format_time(time_in_seconds):
+    if time_in_seconds < 60:
+        return f'{time_in_seconds:.2f}s'
+    return f'{time_in_seconds/60:.2f}min'
 
 def heatmap(results_df, target_expression, index, columns, figsize=(14, 6)):
     error_pivot_table = results_df.pivot_table(values='error', index=index, columns=columns, aggfunc='mean')
@@ -231,13 +235,13 @@ def distribution_plot(results_df, target_expression, index, figsize=(14, 6)):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     # Distribution of Error
-    sns.kdeplot(data=results_df, x='error', hue='selection', fill=False, ax=axes[0])
+    sns.kdeplot(data=results_df, x='error', hue=index, fill=False, ax=axes[0])
     axes[0].set_title(f'Distribution of Error with Target Expression {target_expression}')
     axes[0].set_xlabel('Error')
     axes[0].set_ylabel('Frequency')
 
     # Distribution of Run Time
-    sns.kdeplot(data=results_df, x='error', hue='selection', fill=False, ax=axes[1])
+    sns.kdeplot(data=results_df, x='run_time', hue=index, fill=False, ax=axes[1])
     axes[1].set_title(f'Distribution of Run Time with Target Expression {target_expression}')
     axes[1].set_xlabel('Run Time (s)')
     axes[1].set_ylabel('Frequency')
@@ -250,13 +254,13 @@ def box_plot(results_df, target_expression, index, figsize=(14, 6)):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     # Distribution of Error
-    sns.boxplot(data=results_df, x='selection', y='error', palette='Set2', ax=axes[0])
+    sns.boxplot(data=results_df, x=index, y='error', palette='Set2', ax=axes[0])
     axes[0].set_title(f'Distribution of Error with Target Expression {target_expression}')
     axes[0].set_xlabel('Error')
     axes[0].set_ylabel('Frequency')
 
     # Distribution of Run Time
-    sns.boxplot(data=results_df, x='selection', y='run_time', palette='Set2', ax=axes[1])
+    sns.boxplot(data=results_df, x=index, y='run_time', palette='Set2', ax=axes[1])
     axes[1].set_title(f'Distribution of Run Time with Target Expression {target_expression}')
     axes[1].set_xlabel('Run Time (s)')
     axes[1].set_ylabel('Frequency')

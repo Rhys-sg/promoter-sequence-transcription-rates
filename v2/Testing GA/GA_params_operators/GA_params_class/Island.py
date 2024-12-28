@@ -2,6 +2,8 @@ import random
 import numpy as np
 import torch
 
+from .SelectionMethod import SelectionMethod 
+
 class Island:
     '''
     Each island runs a genetic algorithm to optimize the target expression.
@@ -32,7 +34,7 @@ class Island:
     def initialize_infills(self):
         return [
             ''.join([random.choice(['A', 'C', 'G', 'T']) for _ in range(self.geneticAlgorithm.mask_length)])
-            for _ in range(self.geneticAlgorithm.pop_size // self.geneticAlgorithm.islands)
+            for _ in range(self.geneticAlgorithm.island_pop)
         ]
 
     def generate_next_population(self):
@@ -40,8 +42,9 @@ class Island:
         self.record_history(fitness_scores, predictions)
         self.update_best(fitness_scores, predictions)
         
-        parents = self.selection_method(self.population, fitness_scores, self.geneticAlgorithm.island_pop // 2)
-        paired_parents = self.parent_choice_method(parents, self.lineage.generation_idx, self.geneticAlgorithm.generations)
+        surviving_N = int((self.geneticAlgorithm.island_pop * (1-self.geneticAlgorithm.elitist_rate)) * self.geneticAlgorithm.survival_rate)
+        parents = self.selection_method(self.population, fitness_scores, surviving_N)
+        paired_parents = self.pair_parents(parents, self.lineage.generation_idx, self.geneticAlgorithm.generations, self.geneticAlgorithm.survival_rate)
         next_gen = []
 
         for parent1, parent2 in paired_parents:
@@ -50,6 +53,12 @@ class Island:
             children = [self.mutation_method(child, self.lineage.generation_idx, self.geneticAlgorithm.generations) for child in children]
             next_gen.extend(children)
         
+        if self.selection_method.__name__ == 'steady_state':
+            return self.steady_state(self.population, fitness_scores, next_gen)
+        
+        if self.geneticAlgorithm.elitist_rate > 0:
+            next_gen.extend(SelectionMethod.truncation(self.population, fitness_scores, int(self.geneticAlgorithm.island_pop * self.geneticAlgorithm.elitist_rate)))
+
         return next_gen[:len(self.population)]
     
     def evaluate_population(self, infills):
@@ -129,6 +138,21 @@ class Island:
             self.best_infill = self.population[best_idx]
             self.best_fitness = fitness_scores[best_idx]
             self.best_prediction = predictions[best_idx]
+
+    def pair_parents(self, parents, generation_idx, generations, survival_rate):
+        paired_parents = []
+        for _ in range(int(-(-1 // survival_rate))): # uses // for ceiling rounding, then converts to int
+            sub_paired_parents = self.parent_choice_method(parents, generation_idx, generations)
+            paired_parents.extend(sub_paired_parents)
+        return paired_parents[:int(len(parents)/survival_rate)]
+    
+    def steady_state(self, population, fitness_scores, next_gen):
+        '''
+        The k best individuals are selected to be parents, and the worst individuals are replaced by new offspring.
+        The remaining individuals remain in the population, unchanged.
+        This method takes the children and replaces the worst individuals in the population.
+        '''
+        return next_gen + SelectionMethod.truncation(population, fitness_scores, int(self.geneticAlgorithm.island_pop - self.geneticAlgorithm.steady_state_k))
             
     def print_progress(self):
         if self.geneticAlgorithm.verbose > 1:

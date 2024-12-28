@@ -36,6 +36,7 @@ class GeneticAlgorithm:
             # Search parameters
             pop_size=100,
             generations=150,
+            survival_rate=0.5,
 
             # MOGA parameters
             lineage_divergence_alpha=0,
@@ -47,10 +48,11 @@ class GeneticAlgorithm:
 
             # selection parameters
             selection='tournament',
-            elitist_rate=0,
-            num_competitors=5,
             boltzmann_temperature=0.03,
-            
+            elitist_rate=0,
+            steady_state_k=2,
+            num_competitors=5,
+
             # mutation parameters
             mutation='relative_bit_string',
             mutation_rate=1,
@@ -77,6 +79,7 @@ class GeneticAlgorithm:
         self.max_length = max_length
         self.pop_size = pop_size
         self.generations = generations
+        self.survival_rate = survival_rate
         self.lineage_divergence_alpha = lineage_divergence_alpha
         self.diversity_alpha = diversity_alpha
         self.islands = islands
@@ -84,7 +87,9 @@ class GeneticAlgorithm:
         self.island_pop = max(1, int((self.pop_size / self.islands))) # Ensure it is at least 1
 
         # Operators and their parameters
-        self.selection_method = getattr(SelectionMethod(self.island_pop, elitist_rate, num_competitors, boltzmann_temperature), selection)
+        self.selection_method = getattr(SelectionMethod(self.island_pop, boltzmann_temperature, steady_state_k, num_competitors), selection)
+        self.elitist_rate = elitist_rate
+        self.steady_state_k = steady_state_k
         self.mutation_method = getattr(MutationMethod(mutation_rate, generations, relative_mutation_rate_alpha), mutation)
         self.crossover_method = getattr(CrossoverMethod(k_crossover_points), crossover)
         self.parent_choice_method = getattr(ParentChoiceMethod(covariance, generational_covariance_alpha), parent_choice)

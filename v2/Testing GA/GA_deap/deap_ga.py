@@ -1,23 +1,25 @@
 import random
 import numpy as np
-import torch
-from keras.models import load_model  # type: ignore
+import math
 from deap import base, creator, tools  # type: ignore
 
+from cnn import CNN
 
 class GeneticAlgorithm:
-    def __init__(self, cnn_model_path, cnn_input_length, masked_sequence, target_expression, population_size, generations, crossover_prob, mutation_prob):
+    def __init__(self, cnn_model_path, use_cache, masked_sequence, target_expression, population_size, generations, crossover_prob, mutation_prob):
         # Genetic Algorithm attributes
         self.population_size = population_size
         self.generations = generations
         self.crossover_prob = crossover_prob
         self.mutation_prob = mutation_prob
 
+        # CNN model and attributes
+        self.cnn = CNN(cnn_model_path)
+        self.use_cache = use_cache
+
         # Evaluation attributes
-        self.cnn = load_model(cnn_model_path)
-        self.cnn_input_length = cnn_input_length
-        self.masked_sequence = self._one_hot_sequence(masked_sequence)
-        self.mask_indices = self._get_mask_indices(masked_sequence)
+        self.masked_sequence = self.cnn.one_hot_sequence(masked_sequence)
+        self.mask_indices = self._get_mask_indices(self.masked_sequence)
         self.target_expression = target_expression
 
         # Setup DEAP
@@ -27,28 +29,8 @@ class GeneticAlgorithm:
         # Cache for infill sequences
         self.infill_cache = {}
 
-    def _one_hot_sequence(self, sequence):
-        mapping = {
-            'A': np.array([1, 0, 0, 0]),
-            'C': np.array([0, 1, 0, 0]),
-            'G': np.array([0, 0, 1, 0]),
-            'T': np.array([0, 0, 0, 1]),
-            '0': np.array([0, 0, 0, 0]),
-            'N': np.array([0, 0, 0, 0])
-        }
-        return np.array([mapping[nucleotide.upper()] for nucleotide in sequence])
-
-    def _reverse_one_hot_sequence(self, one_hot_sequence):
-        mapping = {
-            (1, 0, 0, 0): 'A',
-            (0, 1, 0, 0): 'C',
-            (0, 0, 1, 0): 'G',
-            (0, 0, 0, 1): 'T'
-        }
-        return ''.join([mapping[tuple(nucleotide)] for nucleotide in one_hot_sequence])
-
     def _get_mask_indices(self, masked_sequence):
-        return [i for i, c in enumerate(masked_sequence) if c == 'N']
+        return [i for i, element in enumerate(masked_sequence) if all(math.isclose(e, 0.25, rel_tol=1e-9) for e in element)]
 
     def _setup_deap(self):
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))
@@ -62,43 +44,31 @@ class GeneticAlgorithm:
         def generate_individual():
             return [generate_one_hot() for _ in range(len(self.mask_indices))]
 
-        self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
-        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
-
         # Batch evaluation
         def eval_fitness_batch(population):
-            predictions = self._predict(population)
+            population = [self._reconstruct_sequence(ind) for ind in population]
+            predictions = self.cnn.predict(population, use_cache=self.use_cache)
             fitnesses = 1 - np.abs(predictions - self.target_expression)
             return [(fit,) for fit in fitnesses]
+        
+        # Override map to process individuals in batches
+        def batch_map(evaluate, individuals):
+            return evaluate(individuals)
 
+        self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
+        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", eval_fitness_batch)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
         self.toolbox.register("mate", self._cx_one_hot)
         self.toolbox.register("mutate", self._mut_one_hot)
 
-        # Override map to process individuals in batches
-        def batch_map(evaluate, individuals):
-            return evaluate(individuals)
-
         self.toolbox.register("map", batch_map)
-
-    def _predict(self, population):
-        sequences = [self._pad_arr(self._reconstruct_sequence(ind)) for ind in population]
-        to_eval = torch.tensor(np.stack(sequences), dtype=torch.float32)
-        with torch.no_grad():
-            return self.cnn(to_eval).cpu().numpy().flatten()
         
     def _reconstruct_sequence(self, infill):
         sequence = list(self.masked_sequence)
         for idx, char in zip(self.mask_indices, infill):
             sequence[idx] = char
         return sequence
-        
-    def _pad_arr(self, arr):
-        """Pad array to match CNN input length."""
-        padded_arr = np.zeros((self.cnn_input_length, 4))
-        padded_arr[-len(self.masked_sequence):] = arr
-        return padded_arr
 
     def _cx_one_hot(self, ind1, ind2):
         """Crossover: Swap nucleotides between individuals."""
@@ -153,6 +123,7 @@ class GeneticAlgorithm:
 
         # Return the best individual
         best_ind = tools.selBest(population, 1)[0]
-        best_sequence = self._reverse_one_hot_sequence(self._reconstruct_sequence(best_ind))
-        prediction = self._predict([best_ind])[0]
-        return best_sequence, best_ind.fitness.values[0], prediction
+        reconstructed_sequence = self._reconstruct_sequence(best_ind)
+        best_sequence = self.cnn.reverse_one_hot_sequence(reconstructed_sequence)
+        prediction = self.cnn.predict([reconstructed_sequence])
+        return best_sequence, best_ind.fitness.values, prediction

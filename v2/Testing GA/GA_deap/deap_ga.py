@@ -50,12 +50,6 @@ class GeneticAlgorithm:
     def _get_mask_indices(self, masked_sequence):
         return [i for i, c in enumerate(masked_sequence) if c == 'N']
 
-    def _reconstruct_sequence(self, infill):
-        sequence = list(self.masked_sequence)
-        for idx, char in zip(self.mask_indices, infill):
-            sequence[idx] = char
-        return sequence
-
     def _setup_deap(self):
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))
         creator.create("Individual", list, fitness=creator.FitnessMax)
@@ -73,10 +67,7 @@ class GeneticAlgorithm:
 
         # Batch evaluation
         def eval_fitness_batch(population):
-            sequences = [self._pad_arr(self._reconstruct_sequence(ind)) for ind in population]
-            to_eval = torch.tensor(np.stack(sequences), dtype=torch.float32)
-            with torch.no_grad():
-                predictions = self.cnn(to_eval).cpu().numpy().flatten()
+            predictions = self._predict(population)
             fitnesses = 1 - np.abs(predictions - self.target_expression)
             return [(fit,) for fit in fitnesses]
 
@@ -91,6 +82,18 @@ class GeneticAlgorithm:
 
         self.toolbox.register("map", batch_map)
 
+    def _predict(self, population):
+        sequences = [self._pad_arr(self._reconstruct_sequence(ind)) for ind in population]
+        to_eval = torch.tensor(np.stack(sequences), dtype=torch.float32)
+        with torch.no_grad():
+            return self.cnn(to_eval).cpu().numpy().flatten()
+        
+    def _reconstruct_sequence(self, infill):
+        sequence = list(self.masked_sequence)
+        for idx, char in zip(self.mask_indices, infill):
+            sequence[idx] = char
+        return sequence
+        
     def _pad_arr(self, arr):
         """Pad array to match CNN input length."""
         padded_arr = np.zeros((self.cnn_input_length, 4))
@@ -151,11 +154,5 @@ class GeneticAlgorithm:
         # Return the best individual
         best_ind = tools.selBest(population, 1)[0]
         best_sequence = self._reverse_one_hot_sequence(self._reconstruct_sequence(best_ind))
-        prediction = self._predict(best_ind)
+        prediction = self._predict([best_ind])[0]
         return best_sequence, best_ind.fitness.values[0], prediction
-
-    def _predict(self, individual):
-        """Make a prediction for a given individual."""
-        to_eval = torch.tensor(np.stack([self._pad_arr(self._reconstruct_sequence(individual))]), dtype=torch.float32)
-        with torch.no_grad():
-            return self.cnn(to_eval).cpu().numpy().flatten()[0]

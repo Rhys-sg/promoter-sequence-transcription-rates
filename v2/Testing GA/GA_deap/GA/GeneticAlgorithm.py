@@ -3,7 +3,7 @@ import numpy as np
 import math
 from deap import base, creator, tools  # type: ignore
 
-from cnn import CNN
+from .CNN import CNN
 
 class GeneticAlgorithm:
     def __init__(self, cnn_model_path, use_cache, masked_sequence, target_expression, population_size, generations, crossover_prob, mutation_prob):

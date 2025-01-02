@@ -44,7 +44,7 @@ def test_params(param_range, param_name, cnn_model_path, masked_sequence, target
                         param_name: param_val,
                         'sequence': sequence,
                         'error': abs(prediction - target_expression),
-                        'run_time': (end_time - start_time) / lineages
+                        'run_time': (end_time - start_time)
                     })
             
                 # Update progress bar

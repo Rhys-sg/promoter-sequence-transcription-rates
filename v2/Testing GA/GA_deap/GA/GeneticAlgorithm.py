@@ -2,8 +2,12 @@ import random
 import math
 from deap import base, creator, tools  # type: ignore
 
-from .CNN import CNN
 from .Lineage import Lineage
+from .CNN import CNN
+
+from .Operators.CrossoverMethod import CrossoverMethod
+from .Operators.MutationMethod import MutationMethod
+from .Operators.SelectionMethod import SelectionMethod
 
 class GeneticAlgorithm:
     def __init__(
@@ -14,14 +18,20 @@ class GeneticAlgorithm:
             use_cache=True,
             population_size=100,
             generations=100,
-            crossover_prob=1,
-            mutation_prob=0.05
+            crossover_rate=1,
+
+            # Mutation parameters
+            mutation_method='constant',
+            mutation_rate=0.05,
+            mutation_rate_start=0,
+            mutation_rate_end=0.5,
+            mutation_rate_degree=2
     ):
         # Genetic Algorithm attributes
         self.population_size = population_size
         self.generations = generations
-        self.crossover_prob = crossover_prob
-        self.mutation_prob = mutation_prob
+        self.crossover_rate = crossover_rate
+        self.mutation_rate = mutation_rate
 
         # CNN model and attributes
         self.cnn = CNN(cnn_model_path)
@@ -31,6 +41,9 @@ class GeneticAlgorithm:
         self.masked_sequence = self.cnn.one_hot_sequence(masked_sequence)
         self.mask_indices = self._get_mask_indices(self.masked_sequence)
         self.target_expression = target_expression
+
+        # Mutation method
+        self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
@@ -72,7 +85,7 @@ class GeneticAlgorithm:
         self.toolbox.register("evaluate", eval_fitness_batch)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
         self.toolbox.register("mate", self._cx_one_hot)
-        self.toolbox.register("mutate", self._mut_one_hot)
+        self.toolbox.register("mutate", self.mutation_method)
 
         self.toolbox.register("map", batch_map)
         
@@ -89,14 +102,6 @@ class GeneticAlgorithm:
                 ind1[i], ind2[i] = ind2[i], ind1[i]
         return ind1, ind2
 
-    def _mut_one_hot(self, individual):
-        """Mutation: Replace one nucleotide with a new one-hot nucleotide."""
-        nucleotide_idx = random.randint(0, len(individual) - 1)
-        nucleotide = [0, 0, 0, 0]
-        nucleotide[random.randint(0, 3)] = 1
-        individual[nucleotide_idx] = tuple(nucleotide)
-        return (individual,)
-
     def run(self, lineages=1):
         """Run multiple lineages of the Genetic Algorithm."""
         for lineage_id in range(lineages):
@@ -104,8 +109,7 @@ class GeneticAlgorithm:
                 toolbox=self.toolbox,
                 population_size=self.population_size,
                 generations=self.generations,
-                crossover_prob=self.crossover_prob,
-                mutation_prob=self.mutation_prob,
+                crossover_rate=self.crossover_rate,
                 reconstruct_sequence=self._reconstruct_sequence,
                 reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
                 cnn=self.cnn

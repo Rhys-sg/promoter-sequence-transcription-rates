@@ -2,12 +2,11 @@ import random
 from deap import tools  # type: ignore
 
 class Lineage:
-    def __init__(self, toolbox, population_size, generations, crossover_prob, mutation_prob, reconstruct_sequence, reverse_one_hot_sequence, cnn):
+    def __init__(self, toolbox, population_size, generations, crossover_rate, reconstruct_sequence, reverse_one_hot_sequence, cnn):
         self.toolbox = toolbox
         self.population_size = population_size
         self.generations = generations
-        self.crossover_prob = crossover_prob
-        self.mutation_prob = mutation_prob
+        self.crossover_rate = crossover_rate
         self.reconstruct_sequence = reconstruct_sequence
         self.reverse_one_hot_sequence = reverse_one_hot_sequence
         self.cnn = cnn
@@ -31,16 +30,15 @@ class Lineage:
 
             # Apply Crossover
             for child1, child2 in zip(offspring[::2], offspring[1::2]):
-                if random.random() < self.crossover_prob:
+                if random.random() < self.crossover_rate:
                     self.toolbox.mate(child1, child2)
                     del child1.fitness.values
                     del child2.fitness.values
 
             # Apply Mutation
-            for mutant in offspring:
-                if random.random() < self.mutation_prob:
-                    self.toolbox.mutate(mutant)
-                    del mutant.fitness.values
+            for ind in offspring:
+                self.toolbox.mutate(ind, generation_idx=gen)
+                del ind.fitness.values
 
             # Evaluate offspring
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]

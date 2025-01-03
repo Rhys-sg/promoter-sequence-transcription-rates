@@ -18,14 +18,19 @@ class GeneticAlgorithm:
             use_cache=True,
             population_size=100,
             generations=100,
-            crossover_rate=1,
 
             # Mutation parameters
             mutation_method='constant',
             mutation_rate=0.05,
             mutation_rate_start=0,
             mutation_rate_end=0.5,
-            mutation_rate_degree=2
+            mutation_rate_degree=2,
+
+            # Crossover parameters
+            crossover_method='single_point',
+            crossover_rate=1,
+            crossover_points=2,            
+
     ):
         # Genetic Algorithm attributes
         self.population_size = population_size
@@ -44,6 +49,9 @@ class GeneticAlgorithm:
 
         # Mutation method
         self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
+
+        # Crossover method
+        self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
@@ -84,7 +92,7 @@ class GeneticAlgorithm:
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", eval_fitness_batch)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
-        self.toolbox.register("mate", self._cx_one_hot)
+        self.toolbox.register("mate", self.crossover_method)
         self.toolbox.register("mutate", self.mutation_method)
 
         self.toolbox.register("map", batch_map)
@@ -94,13 +102,6 @@ class GeneticAlgorithm:
         for idx, char in zip(self.mask_indices, infill):
             sequence[idx] = char
         return sequence
-
-    def _cx_one_hot(self, ind1, ind2):
-        """Crossover: Swap nucleotides between individuals."""
-        for i in range(len(ind1)):
-            if random.random() < 0.5:
-                ind1[i], ind2[i] = ind2[i], ind1[i]
-        return ind1, ind2
 
     def run(self, lineages=1):
         """Run multiple lineages of the Genetic Algorithm."""

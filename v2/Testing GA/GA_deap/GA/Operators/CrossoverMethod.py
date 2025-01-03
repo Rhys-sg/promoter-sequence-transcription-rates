@@ -14,15 +14,11 @@ class CrossoverMethod():
         return parent1[:crossover_point] + parent2[crossover_point:], parent2[:crossover_point] + parent1[crossover_point:]
     
     def k_point(self, parent1, parent2):
-        '''k-point crossover selects k random points in the parent sequences 
-        and alternates between copying segments from each parent.'''
+        '''k-point crossover selects k random points in the parent sequences and alternates between copying segments from each parent.'''
         if self.k < 1:
             return self.single_point(self, parent1, parent2)
 
-        # Generate k unique random crossover points and sort them
         crossover_points = sorted(random.sample(range(1, len(parent1)), self.k))
-        
-        # Alternate between parents at each crossover point
         child1, child2 = [], []
         last_point = 0
         swap = False
@@ -37,7 +33,6 @@ class CrossoverMethod():
             swap = not swap
             last_point = point
         
-        # Add the remaining segment after the last crossover point
         if swap:
             child1.extend(parent2[last_point:])
             child2.extend(parent1[last_point:])
@@ -45,13 +40,13 @@ class CrossoverMethod():
             child1.extend(parent1[last_point:])
             child2.extend(parent2[last_point:])
         
-        return ''.join(child1), ''.join(child2)
+        return tuple(child1), tuple(child2)
 
     
     def uniform(self, parent1, parent2):
         '''Uniform crossover selects genes from each parent with equal probability.'''
-        child1 = ''
-        child2 = ''
+        child1 = []
+        child2 = []
         bool_array = np.random.choice([True, False], size=len(parent1))
         for i in range(len(parent1)):
             if bool_array[i]:
@@ -60,4 +55,4 @@ class CrossoverMethod():
             else:
                 child1 += parent2[i]
                 child2 += parent1[i]
-        return child1, child2
+        return tuple(child1), tuple(child2)

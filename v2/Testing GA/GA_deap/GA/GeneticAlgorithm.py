@@ -74,13 +74,13 @@ class GeneticAlgorithm:
         if not hasattr(creator, "Individual"):
             creator.create("Individual", list, fitness=creator.FitnessMax)
 
-        def generate_one_hot():
+        def generate_nucleotide():
             nucleotide = [0, 0, 0, 0]
             nucleotide[random.randint(0, 3)] = 1
             return tuple(nucleotide)
 
         def generate_individual():
-            return [generate_one_hot() for _ in range(len(self.mask_indices))]
+            return [generate_nucleotide() for _ in range(len(self.mask_indices))]
 
         # Batch evaluation
         def eval_fitness_batch(population):

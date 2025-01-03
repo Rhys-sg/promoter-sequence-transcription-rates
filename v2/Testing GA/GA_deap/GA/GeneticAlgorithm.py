@@ -20,23 +20,29 @@ class GeneticAlgorithm:
             generations=100,
 
             # Mutation parameters
-            mutation_method='constant',
+            mutation_method='mutConstant',
+            mutation_prob=0.2,
             mutation_rate=0.05,
             mutation_rate_start=0,
             mutation_rate_end=0.5,
             mutation_rate_degree=2,
 
             # Crossover parameters
-            crossover_method='single_point',
+            crossover_method='cxOnePoint',
             crossover_rate=1,
-            crossover_points=2,            
+            crossover_points=2,
+            uniformProb=0.5,
 
+            # Selection parameters
+            selection_method='selTournament',
+            boltzmann_temperature=0.5,
+            tournsize=5,
     ):
         # Genetic Algorithm attributes
         self.population_size = population_size
         self.generations = generations
         self.crossover_rate = crossover_rate
-        self.mutation_rate = mutation_rate
+        self.mutation_prob = mutation_prob
 
         # CNN model and attributes
         self.cnn = CNN(cnn_model_path)
@@ -47,11 +53,10 @@ class GeneticAlgorithm:
         self.mask_indices = self._get_mask_indices(self.masked_sequence)
         self.target_expression = target_expression
 
-        # Mutation method
+        # Operators
         self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
-
-        # Crossover method
-        self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
+        self.crossover_method = getattr(CrossoverMethod(crossover_points, uniformProb), crossover_method)
+        self.selection_method = getattr(SelectionMethod(boltzmann_temperature, tournsize), selection_method)
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
@@ -111,6 +116,7 @@ class GeneticAlgorithm:
                 population_size=self.population_size,
                 generations=self.generations,
                 crossover_rate=self.crossover_rate,
+                mutation_prob=self.mutation_prob,
                 reconstruct_sequence=self._reconstruct_sequence,
                 reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
                 cnn=self.cnn

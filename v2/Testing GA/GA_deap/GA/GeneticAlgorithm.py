@@ -1,5 +1,9 @@
 import random
 import math
+import numpy as np
+import torch
+import tensorflow as tf
+import os
 from deap import base, creator, tools  # type: ignore
 
 from .Lineage import Lineage
@@ -18,6 +22,7 @@ class GeneticAlgorithm:
             use_cache=True,
             population_size=100,
             generations=100,
+            seed=None,
 
             # Mutation parameters
             mutation_method='mutConstant',
@@ -38,6 +43,10 @@ class GeneticAlgorithm:
             boltzmann_temperature=0.5,
             tournsize=5,
     ):
+        # Set seed
+        if seed is not None:
+            self._set_seed(seed)
+
         # Genetic Algorithm attributes
         self.population_size = population_size
         self.generations = generations
@@ -64,6 +73,14 @@ class GeneticAlgorithm:
 
         # Lineage objects
         self.lineage_objects = []
+
+    def _set_seed(self, seed):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        tf.random.set_seed(seed)
+        os.environ['PYTHONHASHSEED'] = str(seed)
 
     def _get_mask_indices(self, masked_sequence):
         return [i for i, element in enumerate(masked_sequence) if all(math.isclose(e, 0.25, rel_tol=1e-9) for e in element)]

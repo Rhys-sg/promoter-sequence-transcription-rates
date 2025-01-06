@@ -31,7 +31,7 @@ class MutationMethod():
         '''The mutation rate changes linearly over time from the start rate to the end rate.'''
         if generation_idx != self.generation_idx:
             self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (generation_idx / self.generations)
-        return self.constant(individual)
+        return self.mutConstant(individual)
     
     def mutExponential(self, individual, generation_idx, **kwargs):
         '''The mutation rate changes exponentially over time from the start rate to the end rate.'''
@@ -39,7 +39,7 @@ class MutationMethod():
             self.generation_idx = generation_idx
             t = self.generation_idx / self.generations
             self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (math.pow(t, self.mutation_rate_degree))
-        return self.constant(individual)
+        return self.mutConstant(individual)
     
     def get_all_methods():
         return [method for method in dir(MutationMethod) if method.startswith('mut')]

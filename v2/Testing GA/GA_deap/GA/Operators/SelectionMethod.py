@@ -6,16 +6,17 @@ from deap import tools  # type: ignore
 class SelectionMethod():
     '''
     This class implements various selection methods for genetic algorithms and stores selection parameters.
-    It contains methods references to the ones in the DEAP library, as well as custom methods.
+    It contains method references to the DEAP library, as well as custom methods.
 
-    Not applicable DEAP methods:
+    Does not include:
     - selWorst
     - selDoubleTournament
 
-    Multi-objective DEAP methods (not umplemented yet):
+    Or Multi-objective DEAP methods:
     - selLexicase
     - selEpsilonLexicase
     - selAutomaticEpsilonLexicase
+
     '''
     def __init__(self, boltzmann_temperature, tournsize):
         self.boltzmann_temperature = boltzmann_temperature
@@ -31,7 +32,7 @@ class SelectionMethod():
         return self.selBest(*args, **kwargs)
     
     def selTournament(self, *args, **kwargs):
-        return self.selTournament(*args, **kwargs)
+        return self.selTournament(tournsize=self.tournsize, *args, **kwargs)
     
     def selRoulette(self, *args, **kwargs):
         return self.selRoulette(*args, **kwargs)

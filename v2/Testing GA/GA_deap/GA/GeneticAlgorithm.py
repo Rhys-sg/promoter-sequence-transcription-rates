@@ -99,20 +99,19 @@ class GeneticAlgorithm:
         def generate_individual():
             return [generate_nucleotide() for _ in range(len(self.mask_indices))]
 
-        # Batch evaluation
-        def eval_fitness_batch(population):
+        def evaluate(population):
             population = [self._reconstruct_sequence(ind) for ind in population]
             predictions = self.cnn.predict(population, use_cache=self.use_cache)
-            fitnesses = [1 - abs(pred - self.target_expression) for pred in predictions]
-            return [(fit,) for fit in fitnesses]
-        
+            fitness = abs(predictions - self.target_expression)
+            return [(fit,) for fit in fitness]
+    
         # Override map to process individuals in batches
         def batch_map(evaluate, individuals):
             return evaluate(individuals)
 
         self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
-        self.toolbox.register("evaluate", eval_fitness_batch)
+        self.toolbox.register("evaluate", evaluate)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
         self.toolbox.register("mate", self.crossover_method)
         self.toolbox.register("mutate", self.mutation_method)

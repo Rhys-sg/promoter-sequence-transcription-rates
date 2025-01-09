@@ -36,8 +36,7 @@ class GeneticAlgorithm:
             crossover_method='cxOnePoint',
             crossover_rate=1,
             crossover_points=2,
-            uniformProb=0.5,
-
+            
             # Selection parameters
             selection_method='selTournament',
             boltzmann_temperature=0.5,
@@ -64,7 +63,7 @@ class GeneticAlgorithm:
 
         # Operators
         self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
-        self.crossover_method = getattr(CrossoverMethod(crossover_points, uniformProb), crossover_method)
+        self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
         self.selection_method = getattr(SelectionMethod(boltzmann_temperature, tournsize), selection_method)
 
         # Setup DEAP
@@ -102,7 +101,7 @@ class GeneticAlgorithm:
         def evaluate(population):
             population = [self._reconstruct_sequence(ind) for ind in population]
             predictions = self.cnn.predict(population, use_cache=self.use_cache)
-            fitness = abs(predictions - self.target_expression)
+            fitness = 1 - abs(self.target_expression - predictions)
             return [(fit,) for fit in fitness]
     
         # Override map to process individuals in batches

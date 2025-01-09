@@ -6,18 +6,19 @@ class CrossoverMethod():
     '''
     This class implements various crossover methods for genetic algorithms and stores selection parameters.
     '''
-    def __init__(self, k, uniformProb):
+    def __init__(self, k):
         self.k = k
-        self.uniformProb = uniformProb
     
     def cxOnePoint(self, parent1, parent2):
+        if len(parent1) < 2 or len(parent2) < 2:
+            return parent1, parent2
         return tools.cxOnePoint(parent1, parent2)
     
     def cxTwoPoint(self, parent1, parent2):
         return tools.cxTwoPoint(parent1, parent2)
     
     def cxUniform(self, parent1, parent2):
-        return tools.cxUniform(parent1, parent2, self.uniformProb)
+        return tools.cxUniform(parent1, parent2)
     
     def cxKPoint(self, parent1, parent2):
         '''k-point crossover selects k random points in the parent sequences and alternates between copying segments from each parent.'''
@@ -47,20 +48,3 @@ class CrossoverMethod():
             child2.extend(parent2[last_point:])
         
         return tuple(child1), tuple(child2)
-    
-    def cxUniform(self, parent1, parent2):
-        '''Uniform crossover selects genes from each parent with equal probability.'''
-        child1 = []
-        child2 = []
-        bool_array = np.random.choice([True, False], size=len(parent1))
-        for i in range(len(parent1)):
-            if bool_array[i]:
-                child1 += parent1[i]
-                child2 += parent2[i]
-            else:
-                child1 += parent2[i]
-                child2 += parent1[i]
-        return tuple(child1), tuple(child2)
-    
-    def get_all_methods():
-        return [method for method in dir(CrossoverMethod) if method.startswith('cx')]

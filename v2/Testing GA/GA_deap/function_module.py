@@ -8,7 +8,7 @@ import itertools
 
 from GA.GeneticAlgorithm import GeneticAlgorithm
 
-def test_params(param_ranges, target_expressions, lineages, kwargs, iteration=1):
+def test_params(param_ranges, target_expressions, lineages, kwargs, iteration=1, name=None, save=True):
     results = []
     initial_time = time.time()
     
@@ -45,7 +45,7 @@ def test_params(param_ranges, target_expressions, lineages, kwargs, iteration=1)
                     'lineage': lineage,
                     'sequence': ga.best_sequences[0],
                     'error': abs(target_expression - ga.best_predictions[0]),
-                    'predictions': ga.best_predictions[0],
+                    'prediction': ga.best_predictions[0],
                     'run_time': end - start
                 }
                 results.append({**params, **result})
@@ -63,8 +63,10 @@ def test_params(param_ranges, target_expressions, lineages, kwargs, iteration=1)
     progress_bar.close()
 
     results_df = pd.DataFrame(results)
-    name = '_'.join(param_keys)
-    results_df.to_csv(f'Data/{name}_results_{iteration}.csv', index=False)
+    if name is None:
+        name = '_'.join(param_keys)
+    if save:
+        results_df.to_csv(f'Data/{name}_results_{iteration}.csv', index=False)
 
     return results_df
 
@@ -177,6 +179,51 @@ def scatter_plot(results_df, target_expression, index1, index2=None, polynomial_
     axes[3].set_ylabel('Runtime (s)')
     axes[3].set_title(f'Runtime vs {index2} with Target Expression {target_expression}')
     axes[3].legend()
+
+    plt.tight_layout()
+    plt.show()
+
+def scatter_plot_overlaid(results_df, target_expression, index, color_column, color='tab10', metric1='error', metric2='run_time', polynomial_degree=1):
+    # Create the subplots
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    axes = axes.flatten()
+
+    def add_best_fit_line(ax, x, y, degree, label, color):
+        coeffs = np.polyfit(x, y, degree)
+        poly = np.poly1d(coeffs)
+        x_vals = np.linspace(min(x), max(x), 500)
+        y_vals = poly(x_vals)
+        ax.plot(x_vals, y_vals, label=label, color=color, linestyle='--')
+
+    # Assign colors using colormap
+    unique_colors = results_df[color_column].unique()
+    color_map = plt.get_cmap(color)
+    color_mapping = {name: color_map(i) for i, name in enumerate(unique_colors)}
+    
+    # Scatter Plot and Best-Fit Line for metric1
+    for name, group in results_df.groupby(color_column):
+        scatter_color = color_mapping[name]
+        axes[0].scatter(group[index], group[metric1], alpha=0.7, color=scatter_color, label=f'{color_column}={name}')
+        add_best_fit_line(axes[0], group[index], group[metric1], polynomial_degree, '', scatter_color)
+    
+    axes[0].set_xlabel(index)
+    axes[0].set_ylabel(metric1)
+    axes[0].set_title(f'{metric1} vs {index} with Target Expression {target_expression}')
+    axes[0].legend()
+
+    # Scatter Plot and Best-Fit Line for metric2
+    for name, group in results_df.groupby(color_column):
+        scatter_color = color_mapping[name]
+        axes[1].scatter(group[index], group[metric2], alpha=0.7, color=scatter_color, label=f'{color_column}={name}')
+        add_best_fit_line(axes[1], group[index], group[metric2], polynomial_degree, '', scatter_color)
+    
+    axes[1].set_xlabel(index)
+    axes[1].set_ylabel(metric2)
+    axes[1].set_title(f'{metric2} vs {index} with Target Expression {target_expression}')
+    axes[1].legend()
+
+    plt.tight_layout()
+    plt.show()
 
     plt.tight_layout()
     plt.show()

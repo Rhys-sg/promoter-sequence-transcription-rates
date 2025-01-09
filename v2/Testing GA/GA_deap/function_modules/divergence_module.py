@@ -1,3 +1,7 @@
+'''
+THIS MODULE HAS NOT BEEN UPDATED SINCE BEING USED IN GA_params_operators
+'''
+
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns

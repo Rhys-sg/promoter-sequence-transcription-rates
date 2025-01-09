@@ -10,7 +10,7 @@ from GA.GeneticAlgorithm import GeneticAlgorithm
 
 from function_module import format_time
 
-def test_combinatorial(masked_sequences, target_expressions, kwargs, dir, iterations=1):
+def test_combinatorial(masked_sequences, target_expressions, kwargs, to_csv=None):
     results = []
     initial_time = time.time()
 
@@ -59,11 +59,12 @@ def test_combinatorial(masked_sequences, target_expressions, kwargs, dir, iterat
     progress_bar.close()
 
     results_df = pd.DataFrame(results)
-    results_df.to_csv(f'Data/Combinatorial Comparison/{dir}/combinatorial_results_{iterations}.csv', index=False)
+    if to_csv != None:
+        results_df.to_csv(to_csv, index=False)
 
     return results_df
 
-def test_genetic(masked_sequences, target_expressions, lineages, kwargs, dir, iterations=1):
+def test_genetic(masked_sequences, target_expressions, lineages, kwargs, to_csv):
     results = []
     initial_time = time.time()
 
@@ -114,7 +115,8 @@ def test_genetic(masked_sequences, target_expressions, lineages, kwargs, dir, it
     progress_bar.close()
 
     results_df = pd.DataFrame(results)
-    results_df.to_csv(f'Data/Combinatorial Comparison/{dir}/genetic_results_{iterations}.csv', index=False)
+    if to_csv != None:
+        results_df.to_csv(to_csv, index=False)
 
     return results_df
 

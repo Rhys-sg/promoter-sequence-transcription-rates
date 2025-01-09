@@ -9,7 +9,7 @@ import itertools
 from GA.MogaGeneticAlgorithm import MogaGeneticAlgorithm
 from function_module import format_time
 
-def test_params(param_ranges, target_expressions, lineages, kwargs, iteration=1):
+def test_params(param_ranges, target_expressions, lineages, kwargs, to_csv=None, iteration=1):
     results = []
     initial_time = time.time()
     
@@ -64,8 +64,8 @@ def test_params(param_ranges, target_expressions, lineages, kwargs, iteration=1)
     progress_bar.close()
 
     results_df = pd.DataFrame(results)
-    name = '_'.join(param_keys)
-    results_df.to_csv(f'Data/{name}_results_{iteration}.csv', index=False)
+    if to_csv != None:
+        results_df.to_csv(to_csv, index=False)
 
     return results_df
 

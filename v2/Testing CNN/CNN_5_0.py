@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, root_mean_squared_error, mean_absolute_error, r2_score
 from keras.models import Sequential, load_model
 from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
 from keras.optimizers import Adam
@@ -65,6 +66,13 @@ def load_and_predict(filename, X):
     model = load_model('../Models/' + filename)
     predictions_array = model.predict(np.array(X))[:, 0]
     return pd.DataFrame(predictions_array, columns=['Value'])
+
+def calc_metrics(y_test, y_pred):
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = root_mean_squared_error(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    return mse, rmse, mae, r2
 
 def ravel(array):
     return np.ravel(array)

@@ -5,6 +5,7 @@ import pandas as pd
 import time
 from tqdm import tqdm
 import itertools
+from scipy.stats import pearsonr, f_oneway, kruskal
 
 from GA.GeneticAlgorithm import GeneticAlgorithm
 
@@ -68,34 +69,6 @@ def test_params(param_ranges, target_expressions, lineages, kwargs, to_csv=None,
 
     return results_df
 
-def bayesian_test(params, cnn_model_path, masked_sequence, target_expressions, precision, verbose, lineages, seed=1):
-    print(f'Testing params: {params}', end='')
-    error = 0
-    run_time = 0
-
-    for target_expression in target_expressions:
-        ga = GeneticAlgorithm(
-            cnn_model_path=cnn_model_path,
-            masked_sequence=masked_sequence,
-            target_expression=target_expression,
-            precision=precision,
-            verbose=verbose,
-            seed=seed,
-            **params
-        )
-        # Time the run
-        start_time = time.time()
-        _, best_predictions = ga.run(lineages)
-        end_time = time.time()
-
-        # Record the results
-        error += sum([abs(prediction - target_expression) for prediction in best_predictions]) / lineages
-        run_time += (end_time - start_time) / lineages
-    error /= len(target_expressions)
-    print(f' - Error: {error}, Run Time: {run_time}')
-
-    return error, run_time
-
 def format_time(time_in_seconds):
     if time_in_seconds < 60:
         return f'{time_in_seconds:.2f}s'
@@ -104,6 +77,7 @@ def format_time(time_in_seconds):
     return f'{time_in_seconds / 3600:.2f}h'
 
 def heatmap(results_df, target_expression, index, columns, figsize=(14, 6)):
+    # Create pivot tables for error and runtime
     error_pivot_table = results_df.pivot_table(values='error', index=index, columns=columns, aggfunc='mean')
     runtime_pivot_table = results_df.pivot_table(values='run_time', index=index, columns=columns, aggfunc='mean')
     fig, axes = plt.subplots(1, 2, figsize=figsize)
@@ -124,62 +98,83 @@ def heatmap(results_df, target_expression, index, columns, figsize=(14, 6)):
     axes[1].set_xticklabels([f'{round(float(tick.get_text()), 2)}' for tick in axes[1].get_xticklabels()], rotation=0)
     axes[1].set_yticklabels([tick.get_text() for tick in axes[1].get_yticklabels()], rotation=0)
 
+    # Statistical Analysis
+    def analyze_pivot_table(pivot_table, variable_name):
+        # Flatten pivot table into group values
+        grouped_values = []
+        for column in pivot_table.columns:
+            for row in pivot_table.index:
+                grouped_values.append(pivot_table.loc[row, column])
+
+        # Remove NaN values and group by index and columns
+        grouped_values = [value for value in grouped_values if not np.isnan(value)]
+
+        # Statistical test (e.g., ANOVA or Kruskal-Wallis)
+        stat, p_value = kruskal(*grouped_values)  # Switch to f_oneway for ANOVA
+        significance = "Significant" if p_value < 0.05 else "Not Significant"
+        print(f"Statistical Test for {variable_name}:")
+        print(f"  - Statistic: {stat:.3f}")
+        print(f"  - p-value: {p_value:.3e}")
+        print(f"  - {significance}")
+        print()
+
+    # Analyze Error
+    analyze_pivot_table(error_pivot_table, 'error')
+
+    # Analyze Run Time
+    analyze_pivot_table(runtime_pivot_table, 'run_time')
+
     # Adjust layout for better display
     plt.tight_layout()
     plt.show()
 
-def scatter_plot(results_df, target_expression, index1, index2=None, polynomial_degree=1):
+def analyze_relationship(x, y, name1, name2):
+    r, p = pearsonr(x, y)
+    significance = "Significant" if p < 0.05 else "Not Significant"
+    print(f"Relationship between {name1} and {name2}:")
+    print(f"  - Correlation Coefficient (r): {r:.3f}")
+    print(f"  - p-value: {p:.3e}")
+    print(f"  - {significance}")
+    print()
+
+def scatter_plot(results_df, target_expression, index, polynomial_degree=1):
     # Create the subplots
-    num_rows = 1 if index2 is None else 2
-    fig, axes = plt.subplots(num_rows, 2, figsize=(14, 6 * num_rows))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     axes = axes.flatten()
 
     def add_best_fit_line(ax, x, y, degree, label):
+        # Fit a polynomial to the data
         coeffs = np.polyfit(x, y, degree)
         poly = np.poly1d(coeffs)
         x_vals = np.linspace(min(x), max(x), 500)
         y_vals = poly(x_vals)
         ax.plot(x_vals, y_vals, label=label, color='red', linestyle='--')
 
-    # Error vs index1
-    axes[0].scatter(results_df[index1], results_df['error'], alpha=0.7)
-    add_best_fit_line(axes[0], results_df[index1], results_df['error'], polynomial_degree, f'{polynomial_degree}-Degree Fit')
-    axes[0].set_xlabel(index1)
+    # Error vs index
+    x1 = results_df[index]
+    y1 = results_df['error']
+    axes[0].scatter(x1, y1, alpha=0.7)
+    add_best_fit_line(axes[0], x1, y1, polynomial_degree, f'{polynomial_degree}-Degree Fit')
+    axes[0].set_xlabel(index)
     axes[0].set_ylabel('Error')
-    axes[0].set_title(f'Error vs {index1} with Target Expression {target_expression}')
+    axes[0].set_title(f'Error vs {index} with Target Expression {target_expression}')
     axes[0].legend()
 
-    # Runtime vs index1
-    axes[1].scatter(results_df[index1], results_df['run_time'], alpha=0.7)
-    add_best_fit_line(axes[1], results_df[index1], results_df['run_time'], polynomial_degree, f'{polynomial_degree}-Degree Fit')
-    axes[1].set_xlabel(index1)
+    # Runtime vs index
+    x2 = results_df[index]
+    y2 = results_df['run_time']
+    axes[1].scatter(x2, y2, alpha=0.7)
+    add_best_fit_line(axes[1], x2, y2, polynomial_degree, f'{polynomial_degree}-Degree Fit')
+    axes[1].set_xlabel(index)
     axes[1].set_ylabel('Runtime (s)')
-    axes[1].set_title(f'Runtime vs {index1} with Target Expression {target_expression}')
+    axes[1].set_title(f'Runtime vs {index} with Target Expression {target_expression}')
     axes[1].legend()
-
-    if index2 is None:
-        plt.tight_layout()
-        plt.show()
-        return
-
-    # Error vs index2
-    axes[2].scatter(results_df[index2], results_df['error'], alpha=0.7)
-    add_best_fit_line(axes[2], results_df[index2], results_df['error'], polynomial_degree, f'{polynomial_degree}-Degree Fit')
-    axes[2].set_xlabel(index2)
-    axes[2].set_ylabel('Error')
-    axes[2].set_title(f'Error vs {index2} with Target Expression {target_expression}')
-    axes[2].legend()
-
-    # Runtime vs index2
-    axes[3].scatter(results_df[index2], results_df['run_time'], alpha=0.7)
-    add_best_fit_line(axes[3], results_df[index2], results_df['run_time'], polynomial_degree, f'{polynomial_degree}-Degree Fit')
-    axes[3].set_xlabel(index2)
-    axes[3].set_ylabel('Runtime (s)')
-    axes[3].set_title(f'Runtime vs {index2} with Target Expression {target_expression}')
-    axes[3].legend()
 
     plt.tight_layout()
     plt.show()
+
+    analyze_relationship(x1, y1, index, 'error')
+    analyze_relationship(x2, y2, index, 'run_time')
 
 def scatter_plot_overlaid(results_df, target_expression, index, color_column, color='tab10', metric1='error', metric2='run_time', polynomial_degree=1):
     # Create the subplots
@@ -223,65 +218,10 @@ def scatter_plot_overlaid(results_df, target_expression, index, color_column, co
     plt.tight_layout()
     plt.show()
 
-    plt.tight_layout()
-    plt.show()
+    # Analyze the relationship between the variables and the metrics 
+    analyze_relationship(results_df[index], results_df[metric1], index, metric1)
+    analyze_relationship(results_df[index], results_df[metric2], index, metric2)
 
-def hex_bin(results_df, target_expression, index1, index2=None, polynomial_degree=1):
-    # Create the subplots
-    num_rows = 1 if index2 is None else 2
-    fig, axes = plt.subplots(num_rows, 2, figsize=(14, 6 * num_rows))
-    axes = axes.flatten()
-
-    def add_best_fit_line(ax, x, y, degree, label):
-        coeffs = np.polyfit(x, y, degree)
-        poly = np.poly1d(coeffs)
-        x_vals = np.linspace(min(x), max(x), 500)
-        y_vals = poly(x_vals)
-        ax.plot(x_vals, y_vals, label=label, color='red', linestyle='--')
-
-    # Error vs index1
-    hb = axes[0].hexbin(results_df[index1], results_df['error'], gridsize=30, cmap='Blues', mincnt=1)
-    fig.colorbar(hb, ax=axes[1], label='Count')
-    add_best_fit_line(axes[0], results_df[index1], results_df['error'], polynomial_degree, f'{polynomial_degree}-Degree Fit')
-    axes[0].set_xlabel(index1)
-    axes[0].set_ylabel('Error')
-    axes[0].set_title(f'Error vs {index1} with Target Expression {target_expression}')
-    axes[0].legend()
-
-    # Runtime vs index1
-    hb = axes[0].hexbin(results_df[index1], results_df['run_time'], gridsize=30, cmap='Blues', mincnt=1)
-    fig.colorbar(hb, ax=axes[1], label='Count')
-    add_best_fit_line(axes[1], results_df[index1], results_df['run_time'], polynomial_degree, f'{polynomial_degree}-Degree Fit')
-    axes[1].set_xlabel(index1)
-    axes[1].set_ylabel('Runtime (s)')
-    axes[1].set_title(f'Runtime vs {index1} with Target Expression {target_expression}')
-    axes[1].legend()
-
-    if index2 is None:
-        plt.tight_layout()
-        plt.show()
-        return
-
-    # Error vs index2
-    hb = axes[2].hexbin(results_df[index2], results_df['error'], gridsize=30, cmap='Blues', mincnt=1)
-    fig.colorbar(hb, ax=axes[1], label='Count')
-    add_best_fit_line(axes[2], results_df[index2], results_df['error'], polynomial_degree, f'{polynomial_degree}-Degree Fit')
-    axes[2].set_xlabel(index2)
-    axes[2].set_ylabel('Error')
-    axes[2].set_title(f'Error vs {index2} with Target Expression {target_expression}')
-    axes[2].legend()
-
-    # Runtime vs index2
-    hb = axes[3].hexbin(results_df[index2], results_df['run_time'], gridsize=30, cmap='Blues', mincnt=1)
-    fig.colorbar(hb, ax=axes[1], label='Count')
-    add_best_fit_line(axes[3], results_df[index2], results_df['run_time'], polynomial_degree, f'{polynomial_degree}-Degree Fit')
-    axes[3].set_xlabel(index2)
-    axes[3].set_ylabel('Runtime (s)')
-    axes[3].set_title(f'Runtime vs {index2} with Target Expression {target_expression}')
-    axes[3].legend()
-
-    plt.tight_layout()
-    plt.show()
 
 def distribution_plot(results_df, target_expression, index, figsize=(14, 6)):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
@@ -298,25 +238,27 @@ def distribution_plot(results_df, target_expression, index, figsize=(14, 6)):
     axes[1].set_xlabel('Run Time (s)')
     axes[1].set_ylabel('Frequency')
 
+    # Statistical Analysis
+    def analyze_distribution(data, target, group_var, test_name="ANOVA"):
+        grouped_data = [data[data[group_var] == level][target] for level in data[group_var].unique()]
+        if test_name == "ANOVA":
+            stat, p_value = f_oneway(*grouped_data)
+        elif test_name == "Kruskal-Wallis":
+            stat, p_value = kruskal(*grouped_data)
+        else:
+            raise ValueError("Unsupported test name. Use 'ANOVA' or 'Kruskal-Wallis'.")
+
+        significance = "Significant" if p_value < 0.05 else "Not Significant"
+        print(f"{test_name} Test for {target} by {group_var}:")
+        print(f"  - Statistic: {stat:.3f}")
+        print(f"  - p-value: {p_value:.3e}")
+        print(f"  - {significance}")
+        print()
+
+    # Analyze the distributions for Error and Run Time
+    analyze_distribution(results_df, 'error', index, test_name="ANOVA")
+    analyze_distribution(results_df, 'run_time', index, test_name="ANOVA")
+
     # Adjust layout for better display
     plt.tight_layout()
     plt.show()
-
-def box_plot(results_df, target_expression, index, figsize=(14, 6)):
-    fig, axes = plt.subplots(1, 2, figsize=figsize)
-
-    # Distribution of Error
-    sns.boxplot(data=results_df, x=index, y='error', palette='Set2', ax=axes[0])
-    axes[0].set_title(f'Distribution of Error with Target Expression {target_expression}')
-    axes[0].set_xlabel('Error')
-    axes[0].set_ylabel('Frequency')
-
-    # Distribution of Run Time
-    sns.boxplot(data=results_df, x=index, y='run_time', palette='Set2', ax=axes[1])
-    axes[1].set_title(f'Distribution of Run Time with Target Expression {target_expression}')
-    axes[1].set_xlabel('Run Time (s)')
-    axes[1].set_ylabel('Frequency')
-
-    # Adjust layout for better display
-    plt.tight_layout()
-    plt.show() 

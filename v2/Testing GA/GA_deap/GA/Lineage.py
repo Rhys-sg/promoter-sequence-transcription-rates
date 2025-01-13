@@ -26,7 +26,7 @@ class Lineage:
 
         # Start evolution
         for generation_idx in range(self.generations):
-            offspring = self.toolbox.select(self.population, len(self.population))
+            offspring = self.toolbox.select(self.population, self.population_size//2)
             offspring = list(map(self.toolbox.clone, offspring))
 
             # Apply Crossover

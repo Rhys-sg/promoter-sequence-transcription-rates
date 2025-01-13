@@ -50,7 +50,7 @@ class SelectionMethod():
         favoring exploration in early generations and exploitation in later generations.
         '''
         fitness_scores = [ind.fitness.values[0] for ind in individuals]
-        boltzmann_scores = [math.exp(score / self.boltzmann_temp) for score in fitness_scores]
+        boltzmann_scores = [math.exp(score / self.boltzmann_temperature) for score in fitness_scores]
         total_score = sum(boltzmann_scores)
         probabilities = [score / total_score for score in boltzmann_scores]
         

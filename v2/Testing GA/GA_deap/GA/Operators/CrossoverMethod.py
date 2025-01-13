@@ -18,7 +18,7 @@ class CrossoverMethod():
         return tools.cxTwoPoint(parent1, parent2)
     
     def cxUniform(self, parent1, parent2):
-        return tools.cxUniform(parent1, parent2)
+        return tools.cxUniform(parent1, parent2, 0.5)
     
     def cxKPoint(self, parent1, parent2):
         '''k-point crossover selects k random points in the parent sequences and alternates between copying segments from each parent.'''

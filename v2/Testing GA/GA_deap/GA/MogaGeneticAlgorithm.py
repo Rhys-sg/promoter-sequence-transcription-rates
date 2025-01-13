@@ -26,10 +26,10 @@ class MogaGeneticAlgorithm:
 
             # Mutation parameters
             mutation_method='mutConstant',
-            mutation_prob=0.45,
+            mutation_prob=0.6,
             mutation_rate=0.1,
-            mutation_rate_start=0,
-            mutation_rate_end=0.5,
+            mutation_rate_start=0.1,
+            mutation_rate_end=0.1,
             mutation_rate_degree=2,
 
             # Crossover parameters

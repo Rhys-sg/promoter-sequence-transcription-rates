@@ -44,7 +44,7 @@ class ParallelGeneticAlgorithm:
             tournsize=5,
 
             # Additional parameters
-            elitism_rate=0.1,
+            elitism_rate=0,
     ):
         # Set seed
         if seed is not None:

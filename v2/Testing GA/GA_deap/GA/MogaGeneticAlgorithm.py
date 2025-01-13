@@ -44,7 +44,7 @@ class MogaGeneticAlgorithm:
             diversity_weight=1,
 
             # Additional parameters
-            elitism_rate=0.1,
+            elitism_rate=0,
 
             # MOGA parameters
             divergence_method='max',

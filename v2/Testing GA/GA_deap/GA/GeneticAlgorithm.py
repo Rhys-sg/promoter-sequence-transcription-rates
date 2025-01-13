@@ -129,7 +129,6 @@ class GeneticAlgorithm:
             lineage = Lineage(
                 toolbox=self.toolbox,
                 population_size=self.population_size,
-                generations=self.generations,
                 crossover_rate=self.crossover_rate,
                 mutation_prob=self.mutation_prob,
                 reconstruct_sequence=self._reconstruct_sequence,
@@ -137,7 +136,7 @@ class GeneticAlgorithm:
                 cnn=self.cnn
             )
             
-            lineage.run()
+            lineage.run(self.generations)
             self.lineage_objects.append(lineage)
     
     @property

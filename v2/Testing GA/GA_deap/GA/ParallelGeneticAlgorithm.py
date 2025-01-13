@@ -4,8 +4,7 @@ import numpy as np
 import torch
 import tensorflow as tf
 import os
-from multiprocessing import Pool, cpu_count
-from functools import partial
+import concurrent.futures
 from deap import base, creator, tools  # type: ignore
 
 from .Lineage import Lineage
@@ -91,59 +90,50 @@ class ParallelGeneticAlgorithm:
             creator.create("FitnessMax", base.Fitness, weights=(1.0,))
         if not hasattr(creator, "Individual"):
             creator.create("Individual", list, fitness=creator.FitnessMax)
-        self.toolbox.register("individual", tools.initIterate, creator.Individual, self._generate_individual)
+
+        def generate_nucleotide():
+            nucleotide = [0, 0, 0, 0]
+            nucleotide[random.randint(0, 3)] = 1
+            return tuple(nucleotide)
+
+        def generate_individual():
+            return [generate_nucleotide() for _ in range(len(self.mask_indices))]
+
+        def evaluate(population):
+            population = [self._reconstruct_sequence(ind) for ind in population]
+            predictions = self.cnn.predict(population, use_cache=self.use_cache)
+            fitness = 1 - abs(self.target_expression - predictions)
+            return [(fit,) for fit in fitness]
+    
+        # Override map to process individuals in batches
+        def batch_map(evaluate, individuals):
+            return evaluate(individuals)
+
+        self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
-        self.toolbox.register("evaluate", self._parallel_evaluate)
+        self.toolbox.register("evaluate", evaluate)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
         self.toolbox.register("mate", self.crossover_method)
         self.toolbox.register("mutate", self.mutation_method)
 
-    def _evaluate_population(self, population, cnn, masked_sequence, target_expression, use_cache, reconstruct_sequence):
-        reconstructed_sequences = [reconstruct_sequence(ind) for ind in population]
-        predictions = cnn.predict(reconstructed_sequences, use_cache=use_cache)
-        fitness = 1 - abs(target_expression - predictions)
-        return [(fit,) for fit in fitness]
-
-    def _generate_nucleotide(self):
-        nucleotide = [0, 0, 0, 0]
-        nucleotide[random.randint(0, 3)] = 1
-        return tuple(nucleotide)
-
-    def _generate_individual(self):
-        return [self._generate_nucleotide() for _ in range(len(self.mask_indices))]
-
-    def _parallel_evaluate(self, population):
-        with Pool(processes=cpu_count()) as pool:
-            # Split population into chunks for parallel processing
-            chunk_size = max(1, len(population) // cpu_count())
-            chunks = [population[i:i + chunk_size] for i in range(0, len(population), chunk_size)]
-
-            # Create a partial function for _evaluate_population with fixed arguments
-            evaluate_partial = partial(
-                self._evaluate_population,
-                cnn=self.cnn,
-                masked_sequence=self.masked_sequence,
-                target_expression=self.target_expression,
-                use_cache=self.use_cache,
-                reconstruct_sequence=self._reconstruct_sequence
-            )
-
-            # Evaluate each chunk in parallel
-            results = pool.map(evaluate_partial, chunks)
-
-            # Flatten the results
-            return [fitness for chunk_result in results for fitness in chunk_result]
+        self.toolbox.register("map", batch_map)
         
     def _reconstruct_sequence(self, infill):
         sequence = list(self.masked_sequence)
         for idx, char in zip(self.mask_indices, infill):
             sequence[idx] = char
         return sequence
+    
+    def _migrate(self, populations, migration_rate=0.1):
+        """Perform migration between populations using a ring topology."""
+        num_migrants = int(migration_rate * len(populations[0]))
+        tools.migRing(populations, k=num_migrants, selection=tools.selBest)
 
-    def run(self, lineages=1):
-        """Run multiple lineages of the Genetic Algorithm."""
-        for lineage_id in range(lineages):
-            lineage = Lineage(
+    def run(self, lineages=1, migration_interval=10, migration_rate=0.1):
+        """Run multiple lineages of the Genetic Algorithm with migration."""
+        # Initialize lineages
+        self.lineage_objects = [
+            Lineage(
                 toolbox=self.toolbox,
                 population_size=self.population_size,
                 generations=self.generations,
@@ -151,20 +141,35 @@ class ParallelGeneticAlgorithm:
                 mutation_prob=self.mutation_prob,
                 reconstruct_sequence=self._reconstruct_sequence,
                 reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
-                cnn=self.cnn
+                cnn=self.cnn,
             )
-            
-            lineage.run()
-            self.lineage_objects.append(lineage)
-    
+            for _ in range(lineages)
+        ]
+
+        # Collect populations
+        populations = [lineage.population for lineage in self.lineage_objects]
+
+        def evolve_lineage(lineage, idx):
+            for gen in range(self.generations):
+                lineage.run_one_generation(gen)
+                if (gen + 1) % migration_interval == 0:
+                    self._migrate(populations, migration_rate)
+            return lineage
+
+        # Run lineages in parallel
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [executor.submit(evolve_lineage, lineage, idx) for idx, lineage in enumerate(self.lineage_objects)]
+            for future in concurrent.futures.as_completed(futures):
+                future.result()
+
     @property
     def best_sequences(self):
         return [lineage.best_sequence for lineage in self.lineage_objects]
-    
+
     @property
     def best_fitnesses(self):
         return [lineage.best_fitness for lineage in self.lineage_objects]
-    
+
     @property
     def best_predictions(self):
         return [lineage.best_prediction for lineage in self.lineage_objects]

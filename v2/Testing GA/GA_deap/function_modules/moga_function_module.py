@@ -7,7 +7,7 @@ from tqdm import tqdm
 import itertools
 
 from GA.MogaGeneticAlgorithm import MogaGeneticAlgorithm
-from function_module import format_time
+from .function_module import format_time
 
 def test_params(param_ranges, target_expressions, lineages, kwargs, to_csv=None, iteration=1):
     results = []

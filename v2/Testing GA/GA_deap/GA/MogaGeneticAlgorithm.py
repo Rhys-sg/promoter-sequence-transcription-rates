@@ -43,6 +43,9 @@ class MogaGeneticAlgorithm:
             divergence_weight=1,
             diversity_weight=1,
 
+            # Additional parameters
+            elitism_rate=0.1,
+
             # MOGA parameters
             divergence_method='max',
             diversity_method='mean'
@@ -78,6 +81,9 @@ class MogaGeneticAlgorithm:
         moga_methods = {'max': max, 'min': min, 'mean': np.mean, 'std': np.std}
         self.divergence_method = moga_methods[divergence_method]
         self.diversity_method = moga_methods[diversity_method]
+
+        # Additional parameters
+        self.elitism_rate = elitism_rate
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
@@ -168,7 +174,8 @@ class MogaGeneticAlgorithm:
                 mutation_prob=self.mutation_prob,
                 reconstruct_sequence=self._reconstruct_sequence,
                 reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
-                cnn=self.cnn
+                cnn=self.cnn,
+                elitism_rate=self.elitism_rate
             )
             
             lineage.run(self.generations)

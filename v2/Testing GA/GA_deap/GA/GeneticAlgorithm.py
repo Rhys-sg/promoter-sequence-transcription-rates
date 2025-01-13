@@ -41,6 +41,9 @@ class GeneticAlgorithm:
             selection_method='selTournament',
             boltzmann_temperature=0.5,
             tournsize=5,
+
+            # Additional parameters
+            elitism_rate=0.1
     ):
         # Set seed
         if seed is not None:
@@ -65,6 +68,9 @@ class GeneticAlgorithm:
         self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
         self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
         self.selection_method = getattr(SelectionMethod(boltzmann_temperature, tournsize), selection_method)
+
+        # Additional parameters
+        self.elitism_rate = elitism_rate
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
@@ -133,7 +139,8 @@ class GeneticAlgorithm:
                 mutation_prob=self.mutation_prob,
                 reconstruct_sequence=self._reconstruct_sequence,
                 reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
-                cnn=self.cnn
+                cnn=self.cnn,
+                elitism_rate=self.elitism_rate
             )
             
             lineage.run(self.generations)

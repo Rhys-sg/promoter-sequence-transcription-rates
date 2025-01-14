@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import tensorflow as tf
 import os
-import concurrent.futures
 from deap import base, creator, tools  # type: ignore
 
 from .Lineage import Lineage
@@ -45,6 +44,11 @@ class ParallelGeneticAlgorithm:
 
             # Additional parameters
             elitism_rate=0,
+            survival_rate=0.5,
+
+            # Migration parameters
+            migration_interval=10,
+            migration_rate=0.1,
     ):
         # Set seed
         if seed is not None:
@@ -72,6 +76,11 @@ class ParallelGeneticAlgorithm:
 
         # Additional parameters
         self.elitism_rate = elitism_rate
+        self.survival_rate = survival_rate
+
+        # Migration parameters
+        self.migration_interval = migration_interval
+        self.migration_rate = migration_rate
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
@@ -130,25 +139,25 @@ class ParallelGeneticAlgorithm:
             sequence[idx] = char
         return sequence
     
-    def _migrate(self, populations, migration_rate=0.1):
+    def _migrate(self, populations, migration_rate):
         """Perform migration between populations using a ring topology."""
         num_migrants = int(migration_rate * len(populations[0]))
         tools.migRing(populations, k=num_migrants, selection=tools.selBest)
 
-    def run(self, lineages=1, migration_interval=10, migration_rate=0.1):
+    def run(self, lineages=1):
         """Run multiple lineages of the Genetic Algorithm with migration."""
         # Initialize lineages
         self.lineage_objects = [
             Lineage(
                 toolbox=self.toolbox,
                 population_size=self.population_size,
-                generations=self.generations,
                 crossover_rate=self.crossover_rate,
                 mutation_prob=self.mutation_prob,
                 reconstruct_sequence=self._reconstruct_sequence,
                 reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
                 cnn=self.cnn,
-                elitism_rate=self.elitism_rate
+                elitism_rate=self.elitism_rate,
+                survival_rate=self.survival_rate,
             )
             for _ in range(lineages)
         ]
@@ -156,18 +165,11 @@ class ParallelGeneticAlgorithm:
         # Collect populations
         populations = [lineage.population for lineage in self.lineage_objects]
 
-        def evolve_lineage(lineage, idx):
-            for gen in range(self.generations):
-                lineage.run_one_generation(gen)
-                if (gen + 1) % migration_interval == 0:
-                    self._migrate(populations, migration_rate)
-            return lineage
-
-        # Run lineages in parallel
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(evolve_lineage, lineage, idx) for idx, lineage in enumerate(self.lineage_objects)]
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
+        for gen_idx in range(self.generations):
+            for lineage in self.lineage_objects:
+                lineage.run()
+                if (self.migration_interval != None) and (self.migration_interval > 0) and (self.migration_rate > 0) and ((gen_idx + 1) % self.migration_interval == 0):
+                    self._migrate(populations, self.migration_rate)
 
     @property
     def best_sequences(self):

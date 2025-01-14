@@ -44,6 +44,7 @@ class GeneticAlgorithm:
 
             # Additional parameters
             elitism_rate=0,
+            survival_rate=0.5,
     ):
         # Set seed
         if seed is not None:
@@ -71,6 +72,7 @@ class GeneticAlgorithm:
 
         # Additional parameters
         self.elitism_rate = elitism_rate
+        self.survival_rate = survival_rate
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
@@ -140,7 +142,8 @@ class GeneticAlgorithm:
                 reconstruct_sequence=self._reconstruct_sequence,
                 reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
                 cnn=self.cnn,
-                elitism_rate=self.elitism_rate
+                elitism_rate=self.elitism_rate,
+                survival_rate=self.survival_rate,
             )
             
             lineage.run(self.generations)

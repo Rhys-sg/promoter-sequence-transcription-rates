@@ -45,6 +45,7 @@ class MogaGeneticAlgorithm:
 
             # Additional parameters
             elitism_rate=0,
+            survival_rate=0.5,
 
             # MOGA parameters
             divergence_method='max',
@@ -84,6 +85,7 @@ class MogaGeneticAlgorithm:
 
         # Additional parameters
         self.elitism_rate = elitism_rate
+        self.survival_rate = survival_rate
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
@@ -175,7 +177,8 @@ class MogaGeneticAlgorithm:
                 reconstruct_sequence=self._reconstruct_sequence,
                 reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
                 cnn=self.cnn,
-                elitism_rate=self.elitism_rate
+                elitism_rate=self.elitism_rate,
+                survival_rate=self.survival_rate,
             )
             
             lineage.run(self.generations)

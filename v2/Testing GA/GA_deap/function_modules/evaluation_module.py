@@ -8,7 +8,7 @@ import itertools
 from GA.CombinatorialAlgorithm import CombinatorialAlgorithm
 from GA.GeneticAlgorithm import GeneticAlgorithm
 
-from function_module import format_time
+from .function_module import format_time
 
 def test_combinatorial(masked_sequences, target_expressions, kwargs, to_csv=None):
     results = []

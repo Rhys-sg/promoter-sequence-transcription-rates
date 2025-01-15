@@ -38,8 +38,8 @@ class GeneticAlgorithm:
             crossover_points=2,
             
             # Selection parameters
-            selection_method='selTournament',
-            boltzmann_temperature=0.5,
+            selection_method='selBest',
+            boltzmann_temperature=0.1,
             tournsize=5,
 
             # Additional parameters

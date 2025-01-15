@@ -27,38 +27,42 @@ def test_params(param_ranges, target_expressions, lineages, kwargs, to_csv=None,
         
         for target_expression in target_expressions:
             for lineage in range(lineages):
+                try:
+                    if 'seed' in kwargs:
+                        kwargs['seed'] += 1
+                    
+                    kwargs = {**kwargs, **params}
+                    
+                    # Create genetic algorithm with the current parameter combination
+                    ga = GeneticAlgorithm(**kwargs, target_expression=target_expression)
 
-                if 'seed' in kwargs:
-                    kwargs['seed'] += 1
-                
-                kwargs = {**kwargs, **params}
-                
-                # Create genetic algorithm with the current parameter combination
-                ga = GeneticAlgorithm(**kwargs, target_expression=target_expression)
+                    start = time.time()
+                    ga.run()
+                    end = time.time()
+                    
+                    # Store results
+                    result = {
+                        'target_expression': target_expression,
+                        'lineage': lineage,
+                        'sequence': ga.best_sequences[0],
+                        'error': abs(target_expression - ga.best_predictions[0]),
+                        'prediction': ga.best_predictions[0],
+                        'run_time': end - start
+                    }
+                    results.append({**params, **result})
 
-                start = time.time()
-                ga.run()
-                end = time.time()
-                
-                # Store results
-                result = {
-                    'target_expression': target_expression,
-                    'lineage': lineage,
-                    'sequence': ga.best_sequences[0],
-                    'error': abs(target_expression - ga.best_predictions[0]),
-                    'prediction': ga.best_predictions[0],
-                    'run_time': end - start
-                }
-                results.append({**params, **result})
-
-                # Update progress bar
-                current_combination += 1
-                progress_bar.update(1)
-                elapsed_time = time.time() - initial_time
-                progress_bar.set_postfix({
-                    "Elapsed": format_time(elapsed_time),
-                    "ETA": format_time(((elapsed_time / current_combination) * (total_combinations - current_combination)))
-                })
+                    # Update progress bar
+                    current_combination += 1
+                    progress_bar.update(1)
+                    elapsed_time = time.time() - initial_time
+                    progress_bar.set_postfix({
+                        "Elapsed": format_time(elapsed_time),
+                        "ETA": format_time(((elapsed_time / current_combination) * (total_combinations - current_combination)))
+                    })
+                except Exception as e:
+                    print(f'Error: {e}')
+                    print(f'Params: {params}, Target Expression: {target_expression}, Lineage: {lineage}')
+                    continue
     
     # Close progress bar
     progress_bar.close()

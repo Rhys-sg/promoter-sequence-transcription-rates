@@ -44,7 +44,7 @@ class Lineage:
             elite = tools.selBest(self.population, elite_size)
 
             # Select parents to mate (excluding elite)
-            surviving_n = int(self.survival_rate * self.population_size) - elite_size
+            surviving_n = max(0, int(self.survival_rate * self.population_size) - elite_size)
             parents = self.toolbox.select(self.population, surviving_n)
             random.shuffle(parents)
 

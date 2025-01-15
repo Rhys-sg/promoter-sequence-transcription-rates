@@ -119,7 +119,7 @@ class GeneticAlgorithm:
         self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", evaluate)
-        self.toolbox.register("select", tools.selTournament, tournsize=3)
+        self.toolbox.register("select", self.selection_method)
         self.toolbox.register("mate", self.crossover_method)
         self.toolbox.register("mutate", self.mutation_method)
 

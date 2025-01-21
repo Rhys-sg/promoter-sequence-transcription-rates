@@ -41,7 +41,7 @@ def test_combinatorial(masked_sequences, target_expressions, kwargs, to_csv=None
                     'target_expression': target_expression,
                     'sequence': best_sequence,
                     'error': best_error,
-                    'predictions': best_prediction,
+                    'prediction': best_prediction,
                     'run_time': end - start
                 }
                 results.append(result)
@@ -97,7 +97,7 @@ def test_genetic(masked_sequences, target_expressions, lineages, kwargs, to_csv)
                     'lineage': lineage,
                     'sequence': ga.best_sequences[0],
                     'error': abs(target_expression - ga.best_predictions[0]),
-                    'predictions': ga.best_predictions[0],
+                    'prediction': ga.best_predictions[0],
                     'run_time': end - start
                 }
                 results.append(result)
@@ -223,5 +223,55 @@ def combinatorial_scatter_plot_by_metric_element(results_df, metric, index, inde
         axes[i].tick_params(axis='x', rotation=45)  # Rotate x-axis labels if necessary
     
     plt.tight_layout()
+    plt.show()
+
+def contribution_bar_graph(results_df, independent_variable, axhline=True, text=True, xlim=(0, 75), ylim=(0,1), order=None):
+
+    pLac_expr = 0.33783603
+    average_individual_results = results_df.groupby([independent_variable, 'target_expression'])['prediction'].mean().reset_index()
+
+    # Sort the x axis by the independent variable, and set the order if specified
+    if order:
+        average_individual_results[independent_variable] = pd.Categorical(average_individual_results[independent_variable], categories=order, ordered=True)
+    else:
+        average_individual_results[independent_variable] = pd.Categorical(average_individual_results[independent_variable], ordered=True)
+
+    average_individual_results = average_individual_results.sort_values(independent_variable)
+
+    plt.figure(figsize=(10, 6))
+
+    # Group by target expression
+    data_target_0 = average_individual_results[average_individual_results['target_expression'] == 0]
+    data_target_1 = average_individual_results[average_individual_results['target_expression'] == 1]
+
+    # Plot the bar graph
+    bars_0 = plt.bar(data_target_0[independent_variable], data_target_0['prediction'] - pLac_expr,
+                     bottom=pLac_expr, label='Target Expression = 0', color='blue')
+    bars_1 = plt.bar(data_target_1[independent_variable], data_target_1['prediction'] - pLac_expr,
+                     bottom=pLac_expr, label='Target Expression = 1', color='orange')
+
+    # Add text to the bars
+    if text:
+        for bar, label in zip(bars_0, data_target_0['prediction']):
+            plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + bar.get_y(),
+                     f'{label:.2f}', ha='center', va='top', fontsize=10)
+
+        for bar, label in zip(bars_1, data_target_1['prediction']):
+            plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + bar.get_y(),
+                     f'{label:.2f}', ha='center', va='bottom', fontsize=10)
+
+    # Add horizontal line for pLac expression
+    if axhline:
+        plt.axhline(y=pLac_expr, color='red', linestyle='--', label=f'pLac Expression = {pLac_expr:.2f}')
+
+    # Add labels and title
+    plt.xlabel(independent_variable)
+    plt.ylabel('Relative Expression')
+    plt.xlim(xlim)
+    plt.ylim(ylim)
+    plt.title(f'Highest and Lowest Average Relative Expression for Each Masked pLac {independent_variable}')
+    plt.legend()
+    plt.tight_layout()
+    plt.grid(False)
     plt.show()
 

@@ -6,7 +6,7 @@ import time
 from tqdm import tqdm
 import itertools
 
-from GA.GeneticAlgorithm import GeneticAlgorithm
+from GA.TestGeneticAlgorithm import GeneticAlgorithm
 from .statistical_module import analyze_relationship, analyze_distribution, analyze_pivot_table
 
 def test_params(param_ranges, target_expressions, lineages, kwargs, to_csv=None, iteration=1):

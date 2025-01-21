@@ -11,9 +11,9 @@ from .CNN import CNN
 
 from .Operators.CrossoverMethod import CrossoverMethod
 from .Operators.MutationMethod import MutationMethod
-from .Operators.MogaSelectionMethod import MogaSelectionMethod
+from .Operators.SelectionMethod import SelectionMethod
 
-class MogaGeneticAlgorithm:
+class GeneticAlgorithm:
     def __init__(
             self,
             cnn_model_path,
@@ -37,20 +37,15 @@ class MogaGeneticAlgorithm:
             crossover_method='cxOnePoint',
             crossover_rate=1,
             crossover_points=2,
-
+            
             # Selection parameters
-            selection_method='selAutomaticEpsilonLexicase',
-            prediction_weight=1,
-            divergence_weight=1,
-            diversity_weight=1,
+            selection_method='selBest',
+            boltzmann_temperature=0.1,
+            tournsize=5,
 
             # Additional parameters
             elitism_rate=0,
             survival_rate=0.5,
-
-            # MOGA parameters
-            divergence_method='max',
-            diversity_method='mean'
     ):
         # Set seed
         if seed is not None:
@@ -74,15 +69,7 @@ class MogaGeneticAlgorithm:
         # Operators
         self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations, inverse_entropy), mutation_method)
         self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
-        self.selection_method = getattr(MogaSelectionMethod(), selection_method)
-
-        # MOGA attributes
-        self.prediction_weight = prediction_weight
-        self.divergence_weight = divergence_weight
-        self.diversity_weight = diversity_weight
-        moga_methods = {'max': max, 'min': min, 'mean': np.mean, 'std': np.std}
-        self.divergence_method = moga_methods[divergence_method]
-        self.diversity_method = moga_methods[diversity_method]
+        self.selection_method = getattr(SelectionMethod(boltzmann_temperature, tournsize), selection_method)
 
         # Additional parameters
         self.elitism_rate = elitism_rate
@@ -107,10 +94,10 @@ class MogaGeneticAlgorithm:
         return [i for i, element in enumerate(masked_sequence) if all(math.isclose(e, 0.25, rel_tol=1e-9) for e in element)]
 
     def _setup_deap(self):
-        if not hasattr(creator, "FitnessMulti"):
-            creator.create("FitnessMulti", base.Fitness, weights=(self.prediction_weight, self.divergence_weight, self.diversity_weight))
+        if not hasattr(creator, "FitnessMax"):
+            creator.create("FitnessMax", base.Fitness, weights=(1.0,))
         if not hasattr(creator, "Individual"):
-            creator.create("Individual", list, fitness=creator.FitnessMulti)
+            creator.create("Individual", list, fitness=creator.FitnessMax)
 
         def generate_nucleotide():
             nucleotide = [0, 0, 0, 0]
@@ -119,34 +106,12 @@ class MogaGeneticAlgorithm:
 
         def generate_individual():
             return [generate_nucleotide() for _ in range(len(self.mask_indices))]
-        
-        def evaluate(population):
-            prediction_fitnesses = prediction_fitness(population)
-            divergence_fitnesses = divergence_fitness(population, self.divergence_method)
-            diversity_fitnesses = diversity_fitness(population, self.diversity_method)
-            return tuple(zip(prediction_fitnesses, divergence_fitnesses, diversity_fitnesses))
 
-        def prediction_fitness(population):
+        def evaluate(population):
             population = [self._reconstruct_sequence(ind) for ind in population]
             predictions = self.cnn.predict(population, use_cache=self.use_cache)
-            return 1 - abs(predictions - self.target_expression)
-        
-        def divergence_fitness(population, method):
-            if len(self.lineage_objects) == 0:
-                return np.zeros(len(population))
-            fitnesses = []
-            for current_ind in population:
-                fitnesses.append(1-method([hamming_distance(current_ind, previous_ind.best_sequence[0]) for previous_ind in self.lineage_objects]))
-            return fitnesses
-         
-        def diversity_fitness(population, method):
-            fitnesses = []
-            for i, current_ind in enumerate(population, start=1):
-                fitnesses.append(1-method([hamming_distance(current_ind, other_ind) for other_ind in population[:i:]]))
-            return fitnesses
-            
-        def hamming_distance(ind1, ind2):
-            return sum([1 for s, t in zip(ind1, ind2) if s != t]) / len(ind1)
+            fitness = 1 - abs(self.target_expression - predictions)
+            return [(fit,) for fit in fitness]
     
         # Override map to process individuals in batches
         def batch_map(evaluate, individuals):
@@ -155,7 +120,7 @@ class MogaGeneticAlgorithm:
         self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", evaluate)
-        self.toolbox.register("select", tools.selTournament, tournsize=3)
+        self.toolbox.register("select", self.selection_method)
         self.toolbox.register("mate", self.crossover_method)
         self.toolbox.register("mutate", self.mutation_method)
 

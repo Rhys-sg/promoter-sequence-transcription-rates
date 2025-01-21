@@ -6,12 +6,7 @@ import tensorflow as tf
 import os
 from deap import base, creator, tools  # type: ignore
 
-from .Lineage import Lineage
 from .CNN import CNN
-
-from .Operators.CrossoverMethod import CrossoverMethod
-from .Operators.MutationMethod import MutationMethod
-from .Operators.SelectionMethod import SelectionMethod
 
 class GeneticAlgorithm:
     def __init__(
@@ -23,28 +18,6 @@ class GeneticAlgorithm:
             population_size=100,
             generations=100,
             seed=None,
-
-            # Mutation parameters
-            mutation_method='mutConstant',
-            mutation_prob=0.6,
-            mutation_rate=0.1,
-            mutation_rate_start=0.1,
-            mutation_rate_end=0.1,
-            mutation_rate_degree=2,
-
-            # Crossover parameters
-            crossover_method='cxOnePoint',
-            crossover_rate=1,
-            crossover_points=2,
-            
-            # Selection parameters
-            selection_method='selBest',
-            boltzmann_temperature=0.1,
-            tournsize=5,
-
-            # Additional parameters
-            elitism_rate=0,
-            survival_rate=0.5,
     ):
         # Set seed
         if seed is not None:
@@ -53,8 +26,6 @@ class GeneticAlgorithm:
         # Genetic Algorithm attributes
         self.population_size = population_size
         self.generations = generations
-        self.crossover_rate = crossover_rate
-        self.mutation_prob = mutation_prob
 
         # CNN model and attributes
         self.cnn = CNN(cnn_model_path)
@@ -65,21 +36,21 @@ class GeneticAlgorithm:
         self.mask_indices = self._get_mask_indices(self.masked_sequence)
         self.target_expression = target_expression
 
-        # Operators
-        self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
-        self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
-        self.selection_method = getattr(SelectionMethod(boltzmann_temperature, tournsize), selection_method)
-
-        # Additional parameters
-        self.elitism_rate = elitism_rate
-        self.survival_rate = survival_rate
+        # Mutation attributes
+        self.mutation_rate = 0.1
+        self.mutation_prob = 0.6
 
         # Setup DEAP
         self.toolbox = base.Toolbox()
         self._setup_deap()
 
-        # Lineage objects
-        self.lineage_objects = []
+        # Initialize population
+        self.population = self.toolbox.population(n=self.population_size)
+
+        # Best individual attributes
+        self.best_sequence = None
+        self.best_fitness = -float('inf')
+        self.best_prediction = None
 
     def _set_seed(self, seed):
         random.seed(seed)
@@ -111,6 +82,19 @@ class GeneticAlgorithm:
             predictions = self.cnn.predict(population, use_cache=self.use_cache)
             fitness = 1 - abs(self.target_expression - predictions)
             return [(fit,) for fit in fitness]
+
+        def mutConstant(individual):
+            '''Each nucleotide in the bit string has a probability of mutating.'''
+            for i in range(len(individual)):
+                if random.random() < self.mutation_rate:
+                    individual[i] = mutate_idv(individual[i])
+            return (individual,)
+        
+        def mutate_idv(nucleotide):
+            '''Randomly change a one-hot encoded nucleotide to another one-hot encoded nucleotide.'''
+            nucleotide = [0, 0, 0, 0]
+            nucleotide[random.randint(0, 3)] = 1
+            return tuple(nucleotide)
     
         # Override map to process individuals in batches
         def batch_map(evaluate, individuals):
@@ -119,9 +103,9 @@ class GeneticAlgorithm:
         self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", evaluate)
-        self.toolbox.register("select", self.selection_method)
-        self.toolbox.register("mate", self.crossover_method)
-        self.toolbox.register("mutate", self.mutation_method)
+        self.toolbox.register("select", tools.selBest)
+        self.toolbox.register("mate", tools.cxTwoPoint)
+        self.toolbox.register("mutate", mutConstant)
 
         self.toolbox.register("map", batch_map)
         
@@ -131,32 +115,60 @@ class GeneticAlgorithm:
             sequence[idx] = char
         return sequence
 
-    def run(self, lineages=1):
-        """Run multiple lineages of the Genetic Algorithm."""
-        for lineage_id in range(lineages):
-            lineage = Lineage(
-                toolbox=self.toolbox,
-                population_size=self.population_size,
-                crossover_rate=self.crossover_rate,
-                mutation_prob=self.mutation_prob,
-                reconstruct_sequence=self._reconstruct_sequence,
-                reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
-                cnn=self.cnn,
-                elitism_rate=self.elitism_rate,
-                survival_rate=self.survival_rate,
-            )
-            
-            lineage.run(self.generations)
-            self.lineage_objects.append(lineage)
-    
-    @property
-    def best_sequences(self):
-        return [lineage.best_sequence for lineage in self.lineage_objects]
-    
-    @property
-    def best_fitnesses(self):
-        return [lineage.best_fitness for lineage in self.lineage_objects]
-    
-    @property
-    def best_predictions(self):
-        return [lineage.best_prediction for lineage in self.lineage_objects]
+    def run(self):
+        """
+        Run the Genetic Algorithm.
+        """
+        # Evaluate initial population
+        fitnesses = self.toolbox.evaluate(self.population)
+        for individual, fit in zip(self.population, fitnesses):
+            individual.fitness.values = fit
+
+        # Track the initial best individual
+        best_individual = tools.selBest(self.population, 1)[0]
+        self._update_best(best_individual)
+
+        # Start evolution
+        for _ in range(self.generations):
+
+            parents = self.toolbox.select(self.population, self.population_size)
+            random.shuffle(parents)
+
+            # Generate offspring until the remaining slots are filled
+            offspring = []
+            i = 0
+            while len(offspring) < self.population_size:
+                parent1 = parents[i % len(parents)]
+                parent2 = parents[(i + 1) % len(parents)]
+                child1, child2 = map(self.toolbox.clone, (parent1, parent2))
+                self.toolbox.mate(child1, child2)
+                del child1.fitness.values
+                del child2.fitness.values
+                offspring.extend([child1, child2])
+                i += 1
+
+            # Apply Mutation
+            for individual in offspring:
+                if random.random() < self.mutation_prob:
+                    self.toolbox.mutate(individual)
+                    del individual.fitness.values
+
+            # Evaluate offspring
+            invalid_individuals = [ind for ind in offspring if not ind.fitness.valid]
+            if invalid_individuals:
+                fitnesses = self.toolbox.evaluate(invalid_individuals)
+                for individual, fit in zip(invalid_individuals, fitnesses):
+                    individual.fitness.values = fit
+
+            # Update the best individual
+            current_best = tools.selBest(self.population, 1)[0]
+            self._update_best(current_best)
+
+
+    def _update_best(self, individual):
+        if self.best_fitness is None or individual.fitness.values[0] > self.best_fitness:
+            self.best_fitness = individual.fitness.values[0]
+            reconstructed_sequence = self._reconstruct_sequence(individual)
+            self.best_sequence = self.cnn.reverse_one_hot_sequence(reconstructed_sequence)
+            self.best_prediction = self.cnn.predict([reconstructed_sequence])[0]
+

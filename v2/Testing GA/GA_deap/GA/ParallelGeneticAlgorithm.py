@@ -31,6 +31,7 @@ class ParallelGeneticAlgorithm:
             mutation_rate_start=0.1,
             mutation_rate_end=0.1,
             mutation_rate_degree=2,
+            inverse_entropy=True,
 
             # Crossover parameters
             crossover_method='cxOnePoint',
@@ -70,7 +71,7 @@ class ParallelGeneticAlgorithm:
         self.target_expression = target_expression
 
         # Operators
-        self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
+        self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations, inverse_entropy), mutation_method)
         self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
         self.selection_method = getattr(SelectionMethod(boltzmann_temperature, tournsize), selection_method)
 

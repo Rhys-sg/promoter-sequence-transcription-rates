@@ -149,6 +149,48 @@ def scatter_plot(results_df, target_expression, index, polynomial_degree=1):
     plt.tight_layout()
     plt.show()
 
+def scatter_plot_overlaid_separate(results_df, target_expression, index, color_column, color='tab10', metric1='error', metric2='run_time', polynomial_degree=1):
+    def add_best_fit_line(ax, x, y, degree, label, color):
+        coeffs = np.polyfit(x, y, degree)
+        poly = np.poly1d(coeffs)
+        x_vals = np.linspace(min(x), max(x), 500)
+        y_vals = poly(x_vals)
+        ax.plot(x_vals, y_vals, label=label, color=color, linestyle='--')
+
+    # Assign colors using colormap
+    unique_colors = results_df[color_column].unique()
+    color_map = plt.get_cmap(color)
+    color_mapping = {name: color_map(i) for i, name in enumerate(unique_colors)}
+    
+    # Scatter Plot and Best-Fit Line for metric1
+    plt.figure(figsize=(7, 6))
+    for name, group in results_df.groupby(color_column):
+        scatter_color = color_mapping[name]
+        plt.scatter(group[index], group[metric1], alpha=0.7, color=scatter_color, label=f'{color_column}={name}')
+        add_best_fit_line(plt, group[index], group[metric1], polynomial_degree, '', scatter_color)
+    plt.xlabel(index)
+    plt.ylabel(metric1)
+    plt.title(f'{metric1} vs {index} with Target Expression {target_expression}')
+    plt.legend()
+    plt.show()
+
+    # Scatter Plot and Best-Fit Line for metric2
+    plt.figure(figsize=(7, 6))
+    for name, group in results_df.groupby(color_column):
+        scatter_color = color_mapping[name]
+        plt.scatter(group[index], group[metric2], alpha=0.7, color=scatter_color, label=f'{color_column}={name}')
+        add_best_fit_line(plt, group[index], group[metric2], polynomial_degree, '', scatter_color)
+    plt.xlabel(index)
+    plt.ylabel(metric2)
+    plt.title(f'{metric2} vs {index} with Target Expression {target_expression}')
+    plt.legend()
+    plt.show()
+
+    # Statistical Analysis
+    analyze_relationship(results_df[index], results_df[metric1], index, metric1)
+    analyze_relationship(results_df[index], results_df[metric2], index, metric2)
+
+
 def scatter_plot_overlaid(results_df, target_expression, index, color_column, color='tab10', metric1='error', metric2='run_time', polynomial_degree=1):
     # Create the subplots
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))

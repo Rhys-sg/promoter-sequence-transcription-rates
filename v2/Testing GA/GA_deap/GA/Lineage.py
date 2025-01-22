@@ -39,12 +39,6 @@ class Lineage:
         for _ in range(generations):
             self.generation_idx += 1
 
-            # Update mutation rate once per generation
-            if hasattr(self.toolbox.mutate, 'generation_idx'):
-                self.toolbox.mutate.generation_idx = self.generation_idx
-                if hasattr(self.toolbox.mutate, 'update_rate'):
-                    self.toolbox.mutate.update_rate(self.population, self.generation_idx)
-
             # Apply Elitism
             elite_size = int(self.elitism_rate * self.population_size)
             elite = tools.selBest(self.population, elite_size)
@@ -71,7 +65,7 @@ class Lineage:
             # Apply Mutation
             for individual in offspring:
                 if random.random() < self.mutation_prob:
-                    self.toolbox.mutate(individual, population=self.population)
+                    self.toolbox.mutate(individual, generation_idx=self.generation_idx, population=self.population)
                     del individual.fitness.values
 
             # Evaluate offspring

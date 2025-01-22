@@ -2,11 +2,11 @@ import random
 import math
 import numpy as np
 
-class MutationMethod:
+class MutationMethod():
     '''
     This class implements various mutation methods for genetic algorithms and stores parameters.
     '''
-    def __init__(self, mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, inverse_entropy, generations):
+    def __init__(self, mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations, inverse_entropy):
         self.mutation_rate = mutation_rate
         self.mutation_rate_start = mutation_rate_start
         self.mutation_rate_end = mutation_rate_end
@@ -29,33 +29,27 @@ class MutationMethod:
                 individual[i] = self._mutate(individual[i])
         return (individual,)
     
-    def mutLinear(self, individual, **kwargs):
+    def mutLinear(self, individual, generation_idx, **kwargs):
         '''The mutation rate changes linearly over time from the start rate to the end rate.'''
+        if generation_idx != self.generation_idx:
+            self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (generation_idx / self.generations)
         return self.mutConstant(individual)
     
-    def mutExponential(self, individual, **kwargs):
+    def mutExponential(self, individual, generation_idx, **kwargs):
         '''The mutation rate changes exponentially over time from the start rate to the end rate.'''
+        if generation_idx != self.generation_idx:
+            self.generation_idx = generation_idx
+            t = self.generation_idx / self.generations
+            self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (math.pow(t, self.mutation_rate_degree))
         return self.mutConstant(individual)
     
     def mutEntropy(self, individual, population, **kwargs):
-        '''
-        Adjust mutation rate based on population entropy, mutation start rate, and end rate.
-        '''
+        '''The mutation rate changes based on the entropy of the population.'''
+        entropy_effect = self._calculate_entropy(population) / 2
+        if self.inverse_entropy:
+            entropy_effect = 1 - entropy_effect
+        self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * entropy_effect
         return self.mutConstant(individual)
-    
-    def update_rate(self, population, generation_idx):
-        """Adjust the mutation rate based on the generation or population."""
-        self.generation_idx = generation_idx
-        t = self.generation_idx / self.generations
-        if hasattr(self, 'mutLinear'):
-            self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * t
-        elif hasattr(self, 'mutExponential'):
-            self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (t ** self.mutation_rate_degree)
-        elif hasattr(self, 'mutEntropy'):
-            entropy_effect = self._calculate_entropy(population) / 2
-            if self.inverse_entropy:
-                entropy_effect = 1 - entropy_effect
-            self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * entropy_effect
 
     @staticmethod
     def _calculate_entropy(population):

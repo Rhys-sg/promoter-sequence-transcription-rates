@@ -9,6 +9,16 @@ from deap import base, creator, tools  # type: ignore
 from .CNN import CNN
 
 class GeneticAlgorithm:
+    '''
+    This class implements a Genetic Algorithm to optimize a sequence of nucleotides that
+    minimize the difference between the predicted expression of the CNN model and the target expression.
+    
+    This is the general-purpose Genetic Algorithm class that contains pre-defined functions for the Genetic Algorithm.
+    It is NOT the testing class (TestGeneticAlgorithm.py) that is used to test each genetic operator, their parameters, and the DEAP library.
+
+    Unlike the testing class, this class does NOT use lineages. It runs a single instance and stores the best results.
+    
+    '''
     def __init__(
             self,
             cnn_model_path,

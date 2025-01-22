@@ -14,6 +14,17 @@ from .Operators.MutationMethod import MutationMethod
 from .Operators.SelectionMethod import SelectionMethod
 
 class GeneticAlgorithm:
+    '''
+    For actual use, refer to the GeneticAlgorithm class in the GA module.
+
+    This is the test version of the GeneticAlgorithm class. It is used to test genetic operators, their parameters, and the DEAP library.
+    This version does not implement the Coarse-Grained Parallel GA or MOGA. For those, refer to the MogaGeneticAlgorithm.py and ParallelGeneticAlgorithm.py
+
+    This class is used to run multiple lineages of the Genetic Algorithm, each simulating an independent attempt to find a sequence that minimizes the
+    difference between the target expression and the CNN's prediction. GAs are stochastic, so multiple lineages are run to reduce the effect of randomness and
+    show overall trends.
+
+    '''
     def __init__(
             self,
             cnn_model_path,

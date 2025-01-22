@@ -5,6 +5,9 @@ import numpy as np
 class MutationMethod():
     '''
     This class implements various mutation methods for genetic algorithms and stores parameters.
+
+    For each mutation method, the method must take in the individual to mutate and return the mutated individual.
+    All but mutConstant adjust the mutation rate over time. This is done only once per generation, so the generation index must be passed in.
     '''
     def __init__(self, mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations, inverse_entropy):
         self.mutation_rate = mutation_rate
@@ -23,7 +26,7 @@ class MutationMethod():
         return tuple(nucleotide)
 
     def mutConstant(self, individual, **kwargs):
-        '''Each nucleotide in the bit string has a probability of mutating.'''
+        '''The mutation rate remains constant over time.'''
         for i in range(len(individual)):
             if random.random() < self.mutation_rate:
                 individual[i] = self._mutate(individual[i])

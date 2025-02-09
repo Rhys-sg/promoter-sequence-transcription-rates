@@ -62,10 +62,13 @@ class Lineage:
                 offspring.extend([child1, child2])
                 i += 1
 
+            # Calculate mutation rate
+            mutation_rate = self.toolbox.adj_mutation_rate(generation_idx=self.generation_idx, population=self.population)
+
             # Apply Mutation
             for individual in offspring:
                 if random.random() < self.mutation_prob:
-                    self.toolbox.mutate(individual, generation_idx=self.generation_idx, population=self.population)
+                    self.toolbox.mutate(individual, mutation_rate)
                     del individual.fitness.values
 
             # Evaluate offspring

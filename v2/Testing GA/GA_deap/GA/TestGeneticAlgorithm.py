@@ -37,12 +37,11 @@ class GeneticAlgorithm:
 
             # Mutation parameters
             mutation_method='mutConstant',
-            mutation_prob=0.6,
+            mutation_prob=0.2,
             mutation_rate=0.1,
             mutation_rate_start=0.1,
             mutation_rate_end=0.1,
             mutation_rate_degree=2,
-            inverse_entropy=True,
 
             # Crossover parameters
             crossover_method='cxOnePoint',
@@ -78,7 +77,7 @@ class GeneticAlgorithm:
         self.target_expression = target_expression
 
         # Operators
-        self.mutation_method = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations, inverse_entropy), mutation_method)
+        self.adj_mutation_rate = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
         self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
         self.selection_method = getattr(SelectionMethod(boltzmann_temperature, tournsize), selection_method)
 
@@ -128,12 +127,26 @@ class GeneticAlgorithm:
         def batch_map(evaluate, individuals):
             return evaluate(individuals)
 
+        def mutate(individual, mutation_rate):
+            '''The mutation rate remains constant over time.'''
+            for i in range(len(individual)):
+                if random.random() < mutation_rate:
+                    individual[i] = mutate_idv(individual[i])
+            return (individual,)
+        
+        def mutate_idv(nucleotide):
+            '''Randomly change a one-hot encoded nucleotide to another one-hot encoded nucleotide.'''
+            nucleotide = [0, 0, 0, 0]
+            nucleotide[random.randint(0, 3)] = 1
+            return tuple(nucleotide)
+
         self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", evaluate)
         self.toolbox.register("select", self.selection_method)
         self.toolbox.register("mate", self.crossover_method)
-        self.toolbox.register("mutate", self.mutation_method)
+        self.toolbox.register("adj_mutation_rate", self.adj_mutation_rate)
+        self.toolbox.register("mutate", mutate)
 
         self.toolbox.register("map", batch_map)
         

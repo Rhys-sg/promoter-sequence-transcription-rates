@@ -9,50 +9,35 @@ class MutationMethod():
     For each mutation method, the method must take in the individual to mutate and return the mutated individual.
     All but mutConstant adjust the mutation rate over time. This is done only once per generation, so the generation index must be passed in.
     '''
-    def __init__(self, mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations, inverse_entropy):
+    def __init__(self, mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations):
         self.mutation_rate = mutation_rate
         self.mutation_rate_start = mutation_rate_start
         self.mutation_rate_end = mutation_rate_end
         self.mutation_rate_degree = mutation_rate_degree
-        self.inverse_entropy = inverse_entropy
         self.generation_idx = 0
         self.generations = generations
 
-    @staticmethod
-    def _mutate(nucleotide):
-        '''Randomly change a one-hot encoded nucleotide to another one-hot encoded nucleotide.'''
-        nucleotide = [0, 0, 0, 0]
-        nucleotide[random.randint(0, 3)] = 1
-        return tuple(nucleotide)
-
-    def mutConstant(self, individual, **kwargs):
+    def mutConstant(self, **kwargs):
         '''The mutation rate remains constant over time.'''
-        for i in range(len(individual)):
-            if random.random() < self.mutation_rate:
-                individual[i] = self._mutate(individual[i])
-        return (individual,)
+        return self.mutation_rate
     
-    def mutLinear(self, individual, generation_idx, **kwargs):
+    def mutLinear(self, generation_idx, **kwargs):
         '''The mutation rate changes linearly over time from the start rate to the end rate.'''
-        if generation_idx != self.generation_idx:
-            self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (generation_idx / self.generations)
-        return self.mutConstant(individual)
+        self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (generation_idx / self.generations)
+        return self.mutation_rate
     
-    def mutExponential(self, individual, generation_idx, **kwargs):
+    def mutExponential(self, generation_idx, **kwargs):
         '''The mutation rate changes exponentially over time from the start rate to the end rate.'''
-        if generation_idx != self.generation_idx:
-            self.generation_idx = generation_idx
-            t = self.generation_idx / self.generations
-            self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (math.pow(t, self.mutation_rate_degree))
-        return self.mutConstant(individual)
+        self.generation_idx = generation_idx
+        t = self.generation_idx / self.generations
+        self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * (math.pow(t, self.mutation_rate_degree))
+        return self.mutation_rate
     
-    def mutEntropy(self, individual, population, **kwargs):
+    def mutEntropy(self, population, **kwargs):
         '''The mutation rate changes based on the entropy of the population.'''
-        entropy_effect = self._calculate_entropy(population) / 2
-        if self.inverse_entropy:
-            entropy_effect = 1 - entropy_effect
+        entropy_effect = 1 - self._calculate_entropy(population) / 2
         self.mutation_rate = self.mutation_rate_start + (self.mutation_rate_end - self.mutation_rate_start) * entropy_effect
-        return self.mutConstant(individual)
+        return self.mutation_rate
 
     @staticmethod
     def _calculate_entropy(population):

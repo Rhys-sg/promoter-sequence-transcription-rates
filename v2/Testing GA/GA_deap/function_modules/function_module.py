@@ -73,6 +73,76 @@ def test_params(param_ranges, target_expressions, lineages, kwargs, to_csv=None,
 
     return results_df
 
+def test_param_convergence(param_ranges, target_expressions, lineages, kwargs, to_csv=None, iteration=1):
+    results_dfs = {}
+    initial_time = time.time()
+    
+    # Generate all combinations of parameters
+    param_keys = list(param_ranges.keys())
+    param_values = list(param_ranges.values())
+    param_combinations = list(itertools.product(*param_values))
+
+    total_combinations = len(param_combinations) * len(target_expressions)
+    current_combination = 0
+    progress_bar = tqdm(total=total_combinations, desc='Processing combinations', position=0)
+    
+    for param_combination in param_combinations:
+        params = dict(zip(param_keys, param_combination))
+        
+        for target_expression in target_expressions:
+            try:
+                if 'seed' in kwargs:
+                    kwargs['seed'] += 1
+                
+                kwargs = {**kwargs, **params}
+                
+                # Create genetic algorithm with the current parameter combination
+                ga = GeneticAlgorithm(**kwargs, target_expression=target_expression, track_history=True)
+                ga.run(lineages)
+                
+                # Store results
+                results_dfs[tuple(param_combination)] = pd.DataFrame({
+                    '''
+                    THIS DOES NOT WORK, storing both arrays and floats cause issues with convergence_fill_between
+                    Fix before graphing contour plots
+                    '''
+                    # # Contains lineage history for each generation, shape: (lineages, generations)
+                    # 'population_history' : ga.reorder_history_by_generation(ga.population_history),
+                    # 'best_sequence_history' : ga.reorder_history_by_generation(ga.best_sequence_history),
+                    # 'best_fitness_history' : ga.reorder_history_by_generation(ga.best_fitness_history),
+                    # 'best_prediction_history' : ga.reorder_history_by_generation(ga.best_prediction_history),
+                    # 'convergence_history' : ga.reorder_history_by_generation(ga.convergence_history),
+
+                    # Contains lineage statistics for each generation, shape: (generations,)
+                    'min_convergence_history' : ga.min_lineage_convergence_history,
+                    'max_convergence_history' : ga.max_lineage_convergence_history,
+                    'mean_convergence_history' : ga.mean_lineage_convergence_history,
+                }).T
+
+                # Update progress bar
+                current_combination += 1
+                progress_bar.update(1)
+                elapsed_time = time.time() - initial_time
+                progress_bar.set_postfix({
+                    "Elapsed": format_time(elapsed_time),
+                    "ETA": format_time(((elapsed_time / current_combination) * (total_combinations - current_combination)))
+                })
+            except Exception as e:
+                print(f'Error: {e}')
+                print(f'Params: {params}, Target Expression: {target_expression}')
+                continue
+    
+    # Close progress bar
+    progress_bar.close()
+    
+    # Save to CSV
+    if to_csv != None:
+        for params, df in results_dfs.items():
+            df.to_csv(f'{to_csv}_convergence/{params}', index=False)
+
+    return results_dfs
+
+
 def format_time(time_in_seconds):
     if time_in_seconds < 60:
         return f'{time_in_seconds:.2f}s'
@@ -257,4 +327,44 @@ def distribution_plot(results_df, target_expression, index, figsize=(14, 6)):
     analyze_distribution(results_df, 'run_time', index)
 
     plt.tight_layout()
+    plt.show()
+
+def convergence_plot(results_df, figsize=(14, 6), label='Lineage'):
+    '''
+    Plot the hamming distance convergence for each lineage.
+    Takes in a dataframe of results with rows of lineages and columns of generations.
+    '''
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for lineage in results_df.index:
+        ax.plot(results_df.columns, results_df.loc[lineage], label=f'{label} {lineage}')
+
+    ax.set_xlabel('Generation')
+    ax.set_ylabel('Hamming Distance')
+    ax.set_title('Hamming Distance Convergence')
+    ax.legend()
+    plt.show()
+
+def convergence_fill_between(results_dfs, color='tab10', figsize=(14, 6)):
+    '''
+    Plot the hamming distance convergence using fill_between to show min, average, and max.
+    Takes in a dataframe of results with rows of lineages and columns of generations.
+    '''
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Assign colors using colormap
+    color_map = plt.get_cmap(color)
+    color_mapping = {name: color_map(i) for i, name in enumerate(results_dfs.keys())}
+
+    # Plot the convergence history for dataframe
+    for params, df in results_dfs.items():
+        generations = df.columns
+        ax.fill_between(generations, df.loc['min_convergence_history'], df.loc['max_convergence_history'], alpha=0.3)
+        ax.plot(generations, df.loc['mean_convergence_history'], color=color_mapping[params], linestyle='-', linewidth=2, label=params)
+    
+    ax.set_xlabel('Generation')
+    ax.set_ylabel('Hamming Distance')
+    ax.set_title('Hamming Distance Convergence')
+    ax.legend()
+    
     plt.show()

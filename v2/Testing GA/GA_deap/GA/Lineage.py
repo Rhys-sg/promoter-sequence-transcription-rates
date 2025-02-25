@@ -2,7 +2,7 @@ import random
 from deap import tools  # type: ignore
 
 class Lineage:
-    def __init__(self, toolbox, population_size, crossover_rate, mutation_prob, reconstruct_sequence, reverse_one_hot_sequence, cnn, elitism_rate, survival_rate):
+    def __init__(self, toolbox, population_size, crossover_rate, mutation_prob, reconstruct_sequence, reverse_one_hot_sequence, cnn, elitism_rate, survival_rate, track_history):
         """
         Lineage initialization.
         """
@@ -21,6 +21,13 @@ class Lineage:
         self.best_sequence = None
         self.best_fitness = None
         self.best_prediction = None
+
+        self.track_history = track_history
+        self.population_history = []
+        self.best_sequence_history = []
+        self.best_fitness_history = []
+        self.best_prediction_history = []
+        self.convergence_history = []
 
     def run(self, generations=1):
         """
@@ -85,6 +92,10 @@ class Lineage:
             current_best = tools.selBest(self.population, 1)[0]
             self._update_best(current_best)
 
+            # Update histories
+            if self.track_history:
+                self._update_histories()
+
 
     def _update_best(self, individual):
         if self.best_fitness is None or individual.fitness.values[0] > self.best_fitness:
@@ -92,3 +103,25 @@ class Lineage:
             reconstructed_sequence = self.reconstruct_sequence(individual)
             self.best_sequence = self.reverse_one_hot_sequence(reconstructed_sequence)
             self.best_prediction = self.cnn.predict([reconstructed_sequence])[0]
+
+    def _update_histories(self):
+        self.population_history.append(self.population)
+        self.best_sequence_history.append(self.best_sequence)
+        self.best_fitness_history.append(self.best_fitness)
+        self.best_prediction_history.append(self.best_prediction)
+        self.convergence_history.append(self._calculate_convergence())
+    
+    def _calculate_convergence(self):
+        '''
+        Calculates the average hamming distance between all pairs of individuals in the population.
+        '''
+        distances = []
+        for i, ind1 in enumerate(self.population):
+            for ind2 in self.population[i+1:]:
+                distances.append(self._hamming_distance(ind1, ind2))
+
+        return sum(distances) / len(distances)
+
+    def _hamming_distance(self, ind1, ind2):
+            return sum([1 for s, t in zip(ind1, ind2) if s != t]) / len(ind1)
+    

@@ -56,6 +56,9 @@ class GeneticAlgorithm:
             # Additional parameters
             elitism_rate=0,
             survival_rate=0.5,
+
+            # Evaluation parameters
+            track_history=False
     ):
         # Set seed
         if seed is not None:
@@ -91,6 +94,7 @@ class GeneticAlgorithm:
 
         # Lineage objects
         self.lineage_objects = []
+        self.track_history = track_history
 
     def _set_seed(self, seed):
         random.seed(seed)
@@ -122,10 +126,6 @@ class GeneticAlgorithm:
             predictions = self.cnn.predict(population, use_cache=self.use_cache)
             fitness = 1 - abs(self.target_expression - predictions)
             return [(fit,) for fit in fitness]
-    
-        # Override map to process individuals in batches
-        def batch_map(evaluate, individuals):
-            return evaluate(individuals)
 
         def mutate(individual, mutation_rate):
             '''The mutation rate remains constant over time.'''
@@ -139,6 +139,10 @@ class GeneticAlgorithm:
             nucleotide = [0, 0, 0, 0]
             nucleotide[random.randint(0, 3)] = 1
             return tuple(nucleotide)
+        
+        # Override map to process individuals in batches
+        def batch_map(evaluate, individuals):
+            return evaluate(individuals)
 
         self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
@@ -147,7 +151,6 @@ class GeneticAlgorithm:
         self.toolbox.register("mate", self.crossover_method)
         self.toolbox.register("adj_mutation_rate", self.adj_mutation_rate)
         self.toolbox.register("mutate", mutate)
-
         self.toolbox.register("map", batch_map)
         
     def _reconstruct_sequence(self, infill):
@@ -169,11 +172,15 @@ class GeneticAlgorithm:
                 cnn=self.cnn,
                 elitism_rate=self.elitism_rate,
                 survival_rate=self.survival_rate,
+                track_history=self.track_history,
             )
             
             lineage.run(self.generations)
             self.lineage_objects.append(lineage)
     
+    '''
+    Properties for best sequences, fitnesses, and predictions of each lineage
+    '''
     @property
     def best_sequences(self):
         return [lineage.best_sequence for lineage in self.lineage_objects]
@@ -185,3 +192,49 @@ class GeneticAlgorithm:
     @property
     def best_predictions(self):
         return [lineage.best_prediction for lineage in self.lineage_objects]
+    
+    '''
+    Properties for the history of each lineage
+    '''
+    @property
+    def population_history(self):
+        return [lineage.population_history for lineage in self.lineage_objects]
+    
+    @property
+    def best_sequence_history(self):
+        return [lineage.best_sequence_history for lineage in self.lineage_objects]
+    
+    @property
+    def best_fitness_history(self):
+        return [lineage.best_fitness_history for lineage in self.lineage_objects]
+    
+    @property
+    def best_prediction_history(self):
+        return [lineage.best_prediction_history for lineage in self.lineage_objects]
+    
+    '''
+    Properties for the convergence history of each lineage, the max, min, and mean convergence history of all lineages
+    '''
+    @property
+    def convergence_history(self):
+        return [lineage.convergence_history for lineage in self.lineage_objects]
+
+    @property
+    def max_lineage_convergence_history(self):
+        convergence_history = self.convergence_history
+        return [max([convergence_history[i][j] for i in range(len(convergence_history))]) for j in range(len(convergence_history[0]))]
+    
+    @property
+    def min_lineage_convergence_history(self):
+        convergence_history = self.convergence_history
+        return [min([convergence_history[i][j] for i in range(len(convergence_history))]) for j in range(len(convergence_history[0]))]
+    
+    @property
+    def mean_lineage_convergence_history(self):
+        convergence_history = self.convergence_history
+        return [np.mean([convergence_history[i][j] for i in range(len(convergence_history))]) for j in range(len(convergence_history[0]))]
+    
+    def reorder_history_by_generation(self, history):
+        '''Reformats the history of each lineage to be ordered by generation, not lineage. Ensures all data is in a similar format.'''
+        return [[history[i][j] for i in range(len(history))] for j in range(len(history[0]))]
+        

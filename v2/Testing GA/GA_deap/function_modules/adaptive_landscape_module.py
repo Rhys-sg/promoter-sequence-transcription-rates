@@ -31,7 +31,7 @@ def append_pca(df):
         X = X.reshape(X.shape[0], -1)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    pca = PCA(n_components=2)
+    pca = PCA(n_components=2, random_state=0)
     X_pca = pca.fit_transform(X_scaled)
     df_pca = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
     return pd.concat([df, df_pca], axis=1)

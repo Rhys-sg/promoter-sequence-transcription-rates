@@ -102,10 +102,9 @@ def test_param_convergence(param_ranges, target_expressions, lineages, kwargs, t
                 
                 # Store results
                 results_dfs[tuple(param_combination)] = pd.DataFrame({
-                    '''
-                    THIS DOES NOT WORK, storing both arrays and floats cause issues with convergence_fill_between
-                    Fix before graphing contour plots
-                    '''
+                    
+                    # THIS DOES NOT WORK, storing both arrays and floats cause issues with convergence_fill_between
+                    # Fix before graphing contour plots
                     # # Contains lineage history for each generation, shape: (lineages, generations)
                     # 'population_history' : ga.reorder_history_by_generation(ga.population_history),
                     # 'best_sequence_history' : ga.reorder_history_by_generation(ga.best_sequence_history),
@@ -342,7 +341,7 @@ def convergence_plot(results_df, figsize=(14, 6), label='Lineage'):
     ax.set_xlabel('Generation')
     ax.set_ylabel('Hamming Distance')
     ax.set_title('Hamming Distance Convergence')
-    ax.legend()
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.9))
     plt.show()
 
 def convergence_fill_between(results_dfs, color='tab10', figsize=(14, 6)):
@@ -365,6 +364,5 @@ def convergence_fill_between(results_dfs, color='tab10', figsize=(14, 6)):
     ax.set_xlabel('Generation')
     ax.set_ylabel('Hamming Distance')
     ax.set_title('Hamming Distance Convergence')
-    ax.legend()
-    
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.9))
     plt.show()

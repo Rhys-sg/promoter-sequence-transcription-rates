@@ -123,7 +123,7 @@ def optimize_sequence_with_rl(model, cnn_model_path, masked_sequence, target_exp
     prediction = env.cnn.predict([env.state], use_cache=False)[0]
     error = np.abs(target_expression - prediction)
 
-    return optimized_sequence, prediction, error, env.state
+    return optimized_sequence, prediction, error
 
 # Load a pre-trained RL agent
 def load_rl_agent(model_path):

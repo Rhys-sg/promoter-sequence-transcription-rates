@@ -4,8 +4,9 @@ import numpy as np
 import tensorflow as tf
 import os
 from skopt import gp_minimize
+from skopt.learning import GaussianProcessRegressor
 from skopt.space import Integer
-from skopt.utils import use_named_args
+from skopt.learning.gaussian_process.kernels import Matern
 from .CNN import CNN
 
 class BayesianOptimization:
@@ -24,13 +25,17 @@ class BayesianOptimization:
         self.n_calls = n_calls
         
         self.nucleotide_dict = {
-            0: [1, 0, 0, 0],  # A
-            1: [0, 1, 0, 0],  # C
-            2: [0, 0, 1, 0],  # G
-            3: [0, 0, 0, 1]   # T
+            0: (1, 0, 0, 0),  # A
+            1: (0, 1, 0, 0),  # C
+            2: (0, 0, 1, 0),  # G
+            3: (0, 0, 0, 1)   # T
         }
         
         self.space = [Integer(0, 3, name=f"pos_{i}") for i in range(len(self.mask_indices))]
+        
+        self.prediction_history = []
+        self.error_history = []
+        self.infill_history = []
     
     def _set_seed(self, seed):
         random.seed(seed)
@@ -49,15 +54,28 @@ class BayesianOptimization:
     
     def _objective(self, params):
         """Objective function for Bayesian optimization"""
-        infill = params  # Directly using the list of values
+        infill = params
         sequence = self._reconstruct_sequence(infill)
         prediction = self.cnn.predict([sequence], use_cache=False)[0]
         error = np.abs(self.target_expression - prediction)
+
+        self.prediction_history.append(prediction)
+        self.error_history.append(error)
+        self.infill_history.append(infill)
+
         return error
     
     def run(self):
         '''Run Bayesian optimization to find the best sequence.'''
-        result = gp_minimize(self._objective, self.space, n_calls=self.n_calls, random_state=42)
+        kernel = Matern(length_scale=1.0, nu=2.5)
+        result = gp_minimize(
+            self._objective,
+            self.space,
+            n_calls=self.n_calls,
+            acq_func="EI",  # Expected Improvement
+            base_estimator=GaussianProcessRegressor(kernel=kernel),
+            random_state=42
+        )
         
         best_infill = result.x
         best_sequence = self._reconstruct_sequence(best_infill)

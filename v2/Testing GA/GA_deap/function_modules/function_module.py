@@ -328,7 +328,7 @@ def distribution_plot(results_df, target_expression, index, figsize=(14, 6)):
     plt.tight_layout()
     plt.show()
 
-def convergence_plot(results_df, figsize=(14, 6), label='Lineage'):
+def convergence_plot(results_df, figsize=(14, 6), label='Lineage', ylabel='Hamming Distance'):
     '''
     Plot the hamming distance convergence for each lineage.
     Takes in a dataframe of results with rows of lineages and columns of generations.
@@ -339,8 +339,8 @@ def convergence_plot(results_df, figsize=(14, 6), label='Lineage'):
         ax.plot(results_df.columns, results_df.loc[lineage], label=f'{label} {lineage}')
 
     ax.set_xlabel('Generation')
-    ax.set_ylabel('Hamming Distance')
-    ax.set_title('Hamming Distance Convergence')
+    ax.set_ylabel(ylabel)
+    ax.set_title(f'{ylabel} Convergence')
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.9))
     plt.show()
 

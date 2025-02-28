@@ -19,7 +19,6 @@ class ParallelGeneticAlgorithm:
             cnn_model_path,
             masked_sequence,
             target_expression,
-            use_cache=True,
             population_size=100,
             generations=100,
             seed=None,
@@ -65,7 +64,6 @@ class ParallelGeneticAlgorithm:
 
         # CNN model and attributes
         self.cnn = CNN(cnn_model_path)
-        self.use_cache = use_cache
 
         # Evaluation attributes
         self.masked_sequence = self.cnn.one_hot_sequence(masked_sequence)
@@ -122,7 +120,7 @@ class ParallelGeneticAlgorithm:
 
         def evaluate(population):
             population = [self._reconstruct_sequence(ind) for ind in population]
-            predictions = self.cnn.predict(population, use_cache=self.use_cache)
+            predictions = self.cnn.predict(population)
             fitness = 1 - abs(self.target_expression - predictions)
             return [(fit,) for fit in fitness]
         

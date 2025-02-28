@@ -4,7 +4,7 @@ import tensorflow as tf
 import os
 from .CNN import CNN
 
-class GreedyGeneticAlgorithm:
+class HillClimbAlgorithm:
     '''
     Greedy search algorithm to optimize sequences.
     Finds the optimal single nucleotide mutation, then iterates until it reaches a local optimal.

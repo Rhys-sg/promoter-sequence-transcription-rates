@@ -6,7 +6,7 @@ import tensorflow as tf
 import os
 from deap import base, creator, tools  # type: ignore
 
-from .Lineage import Lineage
+from .MogaLineage import MogaLineage
 from .CNN import CNN
 
 from .Operators.CrossoverMethod import CrossoverMethod
@@ -16,10 +16,13 @@ from .Operators.MogaSelectionMethod import MogaSelectionMethod
 class MogaGeneticAlgorithm:
     def __init__(
             self,
-            cnn_model_path,
             masked_sequence,
-            target_expression,
-            use_cache=True,
+
+            # Evaluation parameters
+            evaluation_methods,
+            evaluation_weights,
+
+            # Genetic Algorithm parameters
             population_size=100,
             generations=100,
             seed=None,
@@ -39,24 +42,22 @@ class MogaGeneticAlgorithm:
 
             # Selection parameters
             selection_method='selAutomaticEpsilonLexicase',
-            prediction_weight=1,
-            divergence_weight=1,
-            diversity_weight=1,
 
             # Additional parameters
             elitism_rate=0,
+            elitism_selection_method=None,
             survival_rate=0.5,
 
-            # MOGA parameters
-            divergence_method='max',
-            diversity_method='mean',
-
-            # Evaluation parameters
+            # Performance parameters
             track_history=False
     ):
         # Set seed
         if seed is not None:
             self._set_seed(seed)
+
+        # Evaluation attributes
+        self.evaluation_methods = evaluation_methods
+        self.evaluation_weights = evaluation_weights
 
         # Genetic Algorithm attributes
         self.population_size = population_size
@@ -64,27 +65,17 @@ class MogaGeneticAlgorithm:
         self.crossover_rate = crossover_rate
         self.mutation_prob = mutation_prob
 
-        # CNN model and attributes
-        self.cnn = CNN(cnn_model_path)
-        self.use_cache = use_cache
-
         # Evaluation attributes
-        self.masked_sequence = self.cnn.one_hot_sequence(masked_sequence)
+        self.masked_sequence = CNN.one_hot_sequence(masked_sequence)
         self.mask_indices = self._get_mask_indices(self.masked_sequence)
-        self.target_expression = target_expression
 
         # Operators
         self.adj_mutation_rate = getattr(MutationMethod(mutation_rate, mutation_rate_start, mutation_rate_end, mutation_rate_degree, generations), mutation_method)
         self.crossover_method = getattr(CrossoverMethod(crossover_points), crossover_method)
         self.selection_method = getattr(MogaSelectionMethod(), selection_method)
-
-        # MOGA attributes
-        self.prediction_weight = prediction_weight
-        self.divergence_weight = divergence_weight
-        self.diversity_weight = diversity_weight
-        moga_methods = {'max': max, 'min': min, 'mean': np.mean, 'std': np.std}
-        self.divergence_method = moga_methods[divergence_method]
-        self.diversity_method = moga_methods[diversity_method]
+        if elitism_selection_method is None:
+            elitism_selection_method = selection_method
+        self.elitism_selection_method = getattr(MogaSelectionMethod(), elitism_selection_method)
 
         # Additional parameters
         self.elitism_rate = elitism_rate
@@ -113,7 +104,7 @@ class MogaGeneticAlgorithm:
 
     def _setup_deap(self):
         if not hasattr(creator, "FitnessMulti"):
-            creator.create("FitnessMulti", base.Fitness, weights=(self.prediction_weight, self.divergence_weight, self.diversity_weight))
+            creator.create("FitnessMulti", base.Fitness, weights=self.evaluation_weights)
         if not hasattr(creator, "Individual"):
             creator.create("Individual", list, fitness=creator.FitnessMulti)
 
@@ -125,51 +116,17 @@ class MogaGeneticAlgorithm:
         def generate_individual():
             return [generate_nucleotide() for _ in range(len(self.mask_indices))]
         
-        def evaluate(population):
-            prediction_fitnesses = prediction_fitness(population)
-            divergence_fitnesses = divergence_fitness(population, self.divergence_method)
-            diversity_fitnesses = diversity_fitness(population, self.diversity_method)
-            return tuple(zip(prediction_fitnesses, divergence_fitnesses, diversity_fitnesses))
-
-        '''
-        The following are fitness functions that can be used to evaluate the fitness of an individual.
-        Maybe this should be an Operator ABC?
-        '''
-        def prediction_fitness(population):
-            population = [self._reconstruct_sequence(ind) for ind in population]
-            predictions = self.cnn.predict(population, use_cache=self.use_cache)
-            return 1 - abs(predictions - self.target_expression)
-        
-        def divergence_fitness(population, method):
-            if len(self.lineage_objects) == 0:
-                return np.zeros(len(population))
-            fitnesses = []
-            for current_ind in population:
-                fitnesses.append(1-method([hamming_distance(current_ind, previous_ind.best_sequence[0]) for previous_ind in self.lineage_objects]))
-            return fitnesses
-         
-        def diversity_fitness(population, method):
-            fitnesses = []
-            for i, current_ind in enumerate(population, start=1):
-                fitnesses.append(1-method([hamming_distance(current_ind, other_ind) for other_ind in population[:i:]]))
-            return fitnesses
-        
-        # def natural_hamming_distance_fitness(population):
-        #     real_sequences = self.real_sequences # TODO
-        #     population = [self._reconstruct_sequence(ind) for ind in population]
-        #     fitnesses = []
-        #     for current_ind in population:
-        #         fitnesses.append(1 - min([hamming_distance(current_ind, real_sequence) for real_sequence in real_sequences]))
-        #     return fitnesses
-        
-        # def natural_sequence_prediction_fitness(population):
-        #     natural_sequence_cnn = CNN(self.cnn_model_path) # TODO
-        #     population = [self._reconstruct_sequence(ind) for ind in population]
-        #     predictions = natural_sequence_cnn.predict(population, use_cache=self.use_cache)
-        #     return 1 - abs(predictions - self.target_expression)
-
-        def hamming_distance(ind1, ind2):
-            return sum([1 for s, t in zip(ind1, ind2) if s != t]) / len(ind1)
+        def evaluate(infill_population):
+            '''Evaluate the fitness of the population based on all evaluation_methods.'''
+            reconstructed_population = [self._reconstruct_sequence(infill) for infill in infill_population]
+            fitnesses = [
+                evaluation_method(
+                    infill_population=infill_population,
+                    reconstructed_population=reconstructed_population
+                )
+                for evaluation_method in self.evaluation_methods
+            ]
+            return tuple(zip(*fitnesses))
         
         def mutate(individual, mutation_rate):
             '''The mutation rate remains constant over time.'''
@@ -191,7 +148,8 @@ class MogaGeneticAlgorithm:
         self.toolbox.register("individual", tools.initIterate, creator.Individual, generate_individual)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", evaluate)
-        self.toolbox.register("select", tools.selTournament, tournsize=3)
+        self.toolbox.register("select", self.selection_method)
+        self.toolbox.register("select_elite", self.elitism_selection_method)
         self.toolbox.register("mate", self.crossover_method)
         self.toolbox.register("adj_mutation_rate", self.adj_mutation_rate)
         self.toolbox.register("mutate", mutate)
@@ -206,14 +164,13 @@ class MogaGeneticAlgorithm:
     def run(self, lineages=1):
         """Run multiple lineages of the Genetic Algorithm."""
         for lineage_id in range(lineages):
-            lineage = Lineage(
+            lineage = MogaLineage(
                 toolbox=self.toolbox,
                 population_size=self.population_size,
                 crossover_rate=self.crossover_rate,
                 mutation_prob=self.mutation_prob,
                 reconstruct_sequence=self._reconstruct_sequence,
-                reverse_one_hot_sequence=self.cnn.reverse_one_hot_sequence,
-                cnn=self.cnn,
+                reverse_one_hot_sequence=CNN.reverse_one_hot_sequence,
                 elitism_rate=self.elitism_rate,
                 survival_rate=self.survival_rate,
                 track_history=self.track_history,

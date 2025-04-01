@@ -25,10 +25,9 @@ def padded_one_hot_encode(sequence):
     encoding = [mapping.get(nucleotide.upper(), [0,0,0,0]) for nucleotide in sequence]
     return encoding
 
-def preprocess_sequences(X):
-    max_length = max(len(seq) for seq in X)
+def preprocess_sequences(X, max_length=150):
     padded_sequences = [padded_one_hot_encode('0' * (max_length - len(seq)) + seq) for seq in X]
-    return np.array(padded_sequences), max_length
+    return np.array(padded_sequences)
 
 def reshape_model_input(X):
     return np.array([[x, x, x, x] for x in X.values]).reshape(-1, 1, 4)

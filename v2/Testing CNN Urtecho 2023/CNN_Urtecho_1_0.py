@@ -13,11 +13,6 @@ def load_and_preprocess_data(file_path):
     df = pd.read_csv(file_path)
     return df
 
-def combine_columns(df):
-    X = df[['promoter_sequence']].astype(str).agg(''.join, axis=1)
-    y = df['log_expn_med_fitted_scaled']
-    return X, y
-
 def padded_one_hot_encode(sequence):
     mapping = {'A': [1,0,0,0], 'C': [0,1,0,0], 'G': [0,0,1,0], 'T': [0,0,0,1], '0': [0,0,0,0]}
     encoding = [mapping[nucleotide.upper()] for nucleotide in sequence]
@@ -46,8 +41,8 @@ def build_cnn_model(input_shape):
     model.compile(optimizer=Adam(learning_rate=0.001), loss='mean_squared_error')
     return model
 
-def train_model(model, X_train, y_train, X_test, y_test):
-    history = model.fit(X_train, y_train, epochs=150, batch_size=32, validation_data=(X_test, y_test))
+def train_model(model, X_train, y_train, X_val, y_val):
+    history = model.fit(X_train, y_train, epochs=150, batch_size=32, validation_data=(X_val, y_val))
     return history
 
 def evaluate_model(model, X_test, y_test):
@@ -76,8 +71,8 @@ def calc_metrics(y_test, y_pred):
 def ravel(array):
     return np.ravel(array)
 
-def plot_kde(df, predicted):
-    sns.kdeplot(df['log_expn_med_fitted_scaled'], fill=True, color='blue', label='Observed Transcription Rate')
+def plot_kde(observed, predicted):
+    sns.kdeplot(observed, fill=True, color='blue', label='Observed Transcription Rate')
     sns.kdeplot(predicted, fill=True, color='green', label='Prediction')
     plt.title('Kernel Density Plot')
     plt.xlabel('Value')

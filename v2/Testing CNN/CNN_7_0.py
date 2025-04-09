@@ -84,7 +84,7 @@ def train_best_model(name, search_dir, X_train, y_train, X_val, y_val, input_sha
     tuner.search(X_train, y_train, epochs=epochs, batch_size=batch_size, 
                  validation_data=(X_val, y_val), callbacks=[early_stop])
 
-    return tuner.get_best_models(num_models=1)[0]
+    return tuner.get_best_models(num_models=1)[0], tuner.get_best_hyperparameters(num_trials=1)[0]
 
 def calc_metrics(y_test, y_pred):
     mse = mean_squared_error(y_test, y_pred)

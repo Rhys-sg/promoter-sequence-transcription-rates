@@ -77,8 +77,8 @@ def calc_metrics(y_test, y_pred):
 def ravel(array):
     return np.ravel(array)
 
-def plot_kde(df, predicted):
-    sns.kdeplot(df['Normalized Observed log(TX/Txref)'], fill=True, color='blue', label='Observed log(TX/Txref)')
+def plot_kde(observed, predicted):
+    sns.kdeplot(observed, fill=True, color='blue', label='Observed log(TX/Txref)')
     sns.kdeplot(predicted, fill=True, color='green', label='Our Prediction')
     plt.title('Kernel Density Plot')
     plt.xlabel('Value')

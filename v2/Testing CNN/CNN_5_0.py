@@ -79,9 +79,9 @@ def ravel(array):
 
 def plot_kde(observed, predicted, title_lab='Kernel Density Plot'):
     sns.kdeplot(observed, fill=True, color='blue', label='Observed log(TX/Txref)')
-    sns.kdeplot(predicted, fill=True, color='green', label='Our Prediction')
+    sns.kdeplot(predicted, fill=True, color='orange', label='Our Prediction')
     plt.title(title_lab)
-    plt.xlabel('Value')
+    plt.xlabel('Expression')
     plt.ylabel('Density')
     plt.legend()
     plt.show()
@@ -93,9 +93,9 @@ def plot_scatter(observed, predicted, title_lab='Observed log(TX/Txref) vs. Our 
     max_val = max(max(observed), max(predicted))
     plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', label='y = x line')
     plt.title(title_lab)
-    plt.xlabel('Observed log(TX/Txref)')
-    plt.ylabel('Our Prediction')
-    plt.legend()
+    plt.xlabel('Observed Expression')
+    plt.ylabel('Predicted Expression')
+    ##plt.legend()
     plt.grid(True)
     plt.show()
 
@@ -105,9 +105,9 @@ def plot_hexbin(observed, predicted, title_lab='Observed log(TX/Txref) vs. Our P
     plt.colorbar(label='Counts')
     plt.plot([0, 1], [0, 1], color='red', linestyle='--', label='y = x line')
     plt.title(title_lab)
-    plt.xlabel('Observed log(TX/Txref)')
-    plt.ylabel('Our Prediction')
-    plt.legend()
+    plt.xlabel('Observed Expression')
+    plt.ylabel('Predicted Expression')
+    ##plt.legend()
     plt.grid(True)
     plt.show()
 

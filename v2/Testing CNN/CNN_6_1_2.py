@@ -98,35 +98,37 @@ def load_and_predict(model_path, X):
     predictions_array = model.predict(np.array(X))[:, 0]
     return pd.DataFrame(predictions_array, columns=['Value'])
 
-def plot_kde(df, predicted):
+def plot_kde(df, predicted, title_lab='Kernel Density Plot'):
     sns.kdeplot(df['Normalized Expression'], fill=True, color='blue', label='Normalized Expression')
-    sns.kdeplot(predicted, fill=True, color='green', label='Our Prediction')
-    plt.title('Kernel Density Plot')
-    plt.xlabel('Value')
+    sns.kdeplot(predicted, fill=True, color='orange', label='Our Prediction')
+    plt.title(title_lab)
+    plt.xlabel('Expression')
     plt.ylabel('Density')
     plt.legend()
     plt.show()
 
-def plot_scatter(observed, predicted):
+def plot_scatter(observed, predicted, title_lab):
     plt.figure(figsize=(10, 6))
     plt.scatter(observed, predicted, color='blue', alpha=0.5, label='Data points')
     min_val = min(min(observed), min(predicted))
     max_val = max(max(observed), max(predicted))
     plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', label='y = x line')
     plt.xlabel('Observed Expression')
-    plt.ylabel('Our Prediction')
-    plt.legend()
+    plt.ylabel('Predicted Expression')
+    plt.title(title_lab)
+    ##plt.legend()
     plt.grid(True)
     plt.show()
 
-def plot_hexbin(observed, predicted):
+def plot_hexbin(observed, predicted, title_lab):
     plt.figure(figsize=(10, 6))
     plt.hexbin(observed, predicted, gridsize=50, cmap='Blues', mincnt=1)
     plt.colorbar(label='Counts')
     plt.plot([0, 1], [0, 1], color='red', linestyle='--', label='y = x line')
     plt.xlabel('Observed Expression')
-    plt.ylabel('Our Prediction')
-    plt.legend()
+    plt.ylabel('Predicted Expression')
+    plt.title(title_lab)
+    ##plt.legend()
     plt.grid(True)
     plt.show()
 

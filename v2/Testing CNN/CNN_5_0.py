@@ -78,8 +78,9 @@ def ravel(array):
     return np.ravel(array)
 
 def plot_kde(observed, predicted, title_lab='Kernel Density Plot'):
-    sns.kdeplot(observed, fill=True, color='blue', label='Observed log(TX/Txref)')
-    sns.kdeplot(predicted, fill=True, color='orange', label='Our Prediction')
+    sns.set_style('white')
+    sns.kdeplot(observed, fill=True, color='blue', label='Observed Expression')
+    sns.kdeplot(predicted, fill=True, color='orange', label='Predicted Expression')
     plt.title(title_lab)
     plt.xlabel('Expression')
     plt.ylabel('Density')
